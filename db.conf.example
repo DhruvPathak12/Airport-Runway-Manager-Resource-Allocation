@@ -1,0 +1,20 @@
+# =====================================================
+# db.conf.example — Database Configuration Template
+# =====================================================
+# INSTRUCTIONS:
+#   1. Copy this file to db.conf in the project root:
+#         cp db.conf.example db.conf      (Linux/macOS)
+#         copy db.conf.example db.conf    (Windows)
+#   2. Fill in your local MySQL credentials below.
+#   3. db.conf is excluded by .gitignore.
+#      It MUST NEVER be committed to Git.
+#
+# All team members must use the same database name.
+# The schema is in sql/schema.sql (available from Day 3).
+# =====================================================
+
+host=localhost
+port=3306
+dbname=airport_runway_db
+user=REPLACE_WITH_YOUR_MYSQL_USERNAME
+password=REPLACE_WITH_YOUR_MYSQL_PASSWORD
