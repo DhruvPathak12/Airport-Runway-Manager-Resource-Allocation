@@ -1,0 +1,8 @@
+-- =============================================================================
+-- transactions.sql — Smart Air Traffic Control Management System
+-- =============================================================================
+-- Day 21 — MySQL transactions
+-- Day 22 — ACID + COMMIT + ROLLBACK
+--
+-- This file is a placeholder. Transaction scripts implemented on Day 21.
+-- =============================================================================

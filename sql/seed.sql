@@ -1,0 +1,7 @@
+-- =============================================================================
+-- seed.sql — Smart Air Traffic Control Management System
+-- =============================================================================
+-- Day 4 — Normalization + constraints + seed data
+--
+-- This file is a placeholder. Seed data implemented on Day 4.
+-- =============================================================================

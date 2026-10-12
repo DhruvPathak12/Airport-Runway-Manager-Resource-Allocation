@@ -1,0 +1,8 @@
+-- =============================================================================
+-- schema.sql — Smart Air Traffic Control Management System
+-- =============================================================================
+-- Day 3 — MySQL schema + relationships
+-- Day 4 — Normalization + constraints + seed data
+--
+-- This file is a placeholder. Full DDL implemented on Day 3.
+-- =============================================================================
