@@ -84,8 +84,56 @@ None.
 
 ---
 
+## DAY 3 — MySQL Schema + Relationships ✅ COMPLETE
+
+### Files Created/Modified
+- `sql/schema.sql` (Implemented complete 8-table DDL)
+- `sql/seed.sql` (Documented deferral to Day 4)
+- `sql/transactions.sql` (Documented deferral to Days 21–22)
+- `docs/DATABASE_DESIGN.md` (NEW — full database design, 1NF/2NF/3NF rationale, cardinalities, invariants)
+- `PROJECT_STATUS.md` (Updated)
+
+### Schema Implemented
+- Eight relational tables under database `smartatc`:
+  1. `roles` (PK `role_id`, UNIQUE `role_name`)
+  2. `users` (PK `user_id`, UNIQUE `username`, FK `role_id`)
+  3. `aircraft` (PK `aircraft_id`, UNIQUE `registration_number`)
+  4. `flights` (PK `flight_id`, FK `aircraft_id`, non-unique `flight_number`, separate `is_emergency`, CHECK priority 1–5)
+  5. `runways` (PK `runway_id`, UNIQUE `runway_number`)
+  6. `scheduling_queue` (PK `queue_id`, FK `flight_id` UNIQUE enforcing 1:0..1, CHECK priorities 1–5, CHECK service_time > 0)
+  7. `runway_assignments` (PK `assignment_id`, FK `flight_id`, FK `runway_id`, FK `assigned_by`, history preserved)
+  8. `operation_logs` (PK `log_id`, FK `user_id`, FK `flight_id`, FK `runway_id`, ON DELETE SET NULL)
+- Character set: `utf8mb4`, Collation: `utf8mb4_unicode_ci`, Engine: `InnoDB`
+
+### Documentation Created
+- `docs/DATABASE_DESIGN.md`: Detailed breakdown of 8 tables, 1NF/2NF/3NF normalization rationale, decoupling justifications, and concurrency invariants for future transactions.
+
+### Tests
+1. Static review of `sql/schema.sql` — PASS
+2. Verify eight core tables defined — PASS
+3. Primary keys verification — PASS
+4. Foreign keys & deletion rules verification — PASS
+5. Unique constraints & indexes verification — PASS
+6. Priority convention consistency (1–5 scale) — PASS
+7. Emergency decoupled from operational status — PASS
+8. Historical runway assignments supported without blocking uniqueness — PASS
+9. Premature seed data deferred — PASS
+10. Premature transaction scripts deferred — PASS
+11. Live MySQL execution — NOT TESTED (MySQL 8.0.46 running locally; password required for root access without configured db.conf)
+12. C++ application build safety — PASS (10/10 units, 0 errors)
+13. Git status and diff verification — PASS
+
+### Known Issues
+None.
+
+### Git
+- Commit: `feat: implement Day 3 MySQL schema and relationships`
+- Branch: `main` → `origin/main`
+
+---
+
 ## CURRENT MILESTONE
-Day 2 — COMPLETE
+Day 3 — COMPLETE
 
 ## NEXT MILESTONE
-Day 3 — MySQL Schema + Relationships
+Day 4 — Normalization Validation + Seed Data

@@ -1,7 +1,9 @@
 -- =============================================================================
 -- seed.sql — Smart Air Traffic Control Management System
+-- Database: smartatc
 -- =============================================================================
--- Day 4 — Normalization + constraints + seed data
---
--- This file is a placeholder. Seed data implemented on Day 4.
+-- Intentionally deferred to Day 4.
+-- Day 4 milestone: Normalization validation + seed data.
+-- =============================================================================
+-- Do NOT add data here until Day 4.
 -- =============================================================================
