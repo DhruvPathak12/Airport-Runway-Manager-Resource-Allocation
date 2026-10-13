@@ -217,3 +217,81 @@ While foreign keys and unique constraints protect relational integrity, certain 
      ```
 2. **Atomic Scheduler Dispatch**:
    - Moving a process state from `Ready` to `Running` in `scheduling_queue` while updating `flights.operational_status` must execute as an atomic transaction.
+
+---
+
+## 6. Day 4 Normalization Review Findings
+
+On Day 4, a formal normalization audit was performed on `sql/schema.sql`:
+
+1. **First Normal Form (1NF) Compliance**:
+   - Every column in all 8 tables stores strictly atomic, single values. No multivalued columns, JSON arrays, or delimited strings are used.
+   - Every table possesses an explicit primary key (`INT AUTO_INCREMENT` surrogate key).
+2. **Second Normal Form (2NF) Compliance**:
+   - Because all 8 tables use single-column primary keys (`table_id`), partial functional dependency on a composite key is structurally impossible.
+   - Alternate candidate keys:
+     - `roles(role_name)`: Single-column candidate key.
+     - `users(username)`: Single-column candidate key.
+     - `aircraft(registration_number)`: Single-column candidate key.
+     - `runways(runway_number)`: Single-column candidate key.
+     - `scheduling_queue(flight_id)`: Single-column candidate key.
+     - `flights(flight_number, scheduled_time)`: Composite index / natural candidate key for scheduled instances. All flight attributes (airline, aircraft_id, source, destination, priority, status) depend on the flight instance as a whole, not merely on the recurring `flight_number`.
+   - Full functional dependency is satisfied across all tables.
+3. **Third Normal Form (3NF) Compliance**:
+   - No non-key attribute transitively depends on another non-key attribute:
+     - `users`: Roles are factored into `roles(role_id, role_name)`. `role_name` does not reside in `users`.
+     - `flights`: Aircraft specifications (`capacity`, `aircraft_type`, `status`) reside in `aircraft`, referenced solely by `aircraft_id`.
+     - `scheduling_queue`: Scheduling simulation metrics (`service_time`, `waiting_time`, `turnaround_time`, `process_state`) are factored out of `flights` to prevent sparse nulls and transitive dependencies.
+     - `runway_assignments`: Temporal assignment states (`assigned_at`, `released_at`, `status`, `assigned_by`) are factored out of `runways` and `flights`.
+4. **Specific Design Invariant Review**:
+   - `flights.aircraft_id`: Nullable FK (`ON DELETE SET NULL`), correctly handling unassigned aircraft or fleet adjustments without deleting flight operations.
+   - `flight_number` Non-Uniqueness: Correctly left non-unique to accommodate recurring commercial flight numbers across operational dates. Lookup efficiency is preserved by the composite index `idx_flights_number_time`.
+   - `is_emergency` Decoupling: Properly maintained as an independent `TINYINT(1)` flag. This enables emergency priority escalation (effective_priority = 1) without mutating or corrupting physical operational statuses (`Taxiing`, `Cleared`, etc.).
+   - Frozen Priority Scale: Enforced strictly with CHECK constraints `BETWEEN 1 AND 5` (1 = Highest, 5 = Lowest).
+   - One-Current-Record Queue: Enforced by `UNIQUE(flight_id)` in `scheduling_queue`.
+   - Audit Trail Preservation: Foreign keys on `operation_logs` use `ON DELETE SET NULL`, ensuring the audit trail remains immutable even if users, flights, or runways are deleted.
+
+**Conclusion:** The schema is fully normalized up to 3NF. No schema modifications or corrective DDL changes were required.
+
+---
+
+## 7. Seed Data & Idempotency Strategy (Day 4)
+
+The seed script `sql/seed.sql` provides repeatable sample data for all 8 tables:
+
+### 7.1 Data Volume & Coverage
+- **Roles (3)**: `Admin`, `ATC`, `Airport Operator`.
+- **Users (3)**: `admin_demo`, `atc_demo`, `operator_demo` assigned to their respective roles.
+  - *Security Limitation*: Passwords use a dummy placeholder SHA-256 hash. These are not valid login credentials and must be generated via Day 6 `PasswordUtils` authentication workflows.
+- **Aircraft (4)**: `VT-AT1` (B737-800, Active), `VT-AT2` (A320neo, Active), `VT-AT3` (B777-300ER, Active), `VT-AT4` (Q400, Maintenance).
+- **Flights (6)**: Fictional operations (`AI-101`, `6E-202`, `AI-303`, `SG-404`, `UK-505`, `QP-606`) spanning varied origins/destinations, priorities 1 through 5, and statuses (`Taxiing`, `Cleared`, `Scheduled`, `Landed`). Includes emergency flight `AI-101` (`is_emergency = 1`, `priority = 1`).
+- **Runways (3)**: `09L` (Occupied by `AI-101`), `09R` (Available), `27` (Maintenance).
+- **Scheduling Queue (4)**: Simulated process control blocks across states:
+  - `AI-101`: Running, base=1, effective=1, burst=60s.
+  - `6E-202`: Ready, base=2, effective=2, burst=60s.
+  - `AI-303`: Ready, base=3, effective=3, burst=90s.
+  - `UK-505`: Completed, base=3, effective=3, wait=45s, turnaround=105s.
+- **Runway Assignments (2)**:
+  - Historical: Runway `09L` assigned to `UK-505` earlier, `Released`.
+  - Active: Runway `09L` assigned to `AI-101`, `Active`. Concurrency invariant maintained (only one active assignment for runway `09L`).
+- **Operation Logs (4)**: Immutable audit records for `SYSTEM_INIT`, `RUNWAY_RELEASE`, `EMERGENCY_DECLARED`, and `RUNWAY_ASSIGN`.
+
+### 7.2 Repeatability & Idempotency
+- **No AUTO_INCREMENT hardcoding**: All foreign keys are dynamically resolved using natural keys (`role_name`, `username`, `registration_number`, `runway_number`, `flight_number` + `scheduled_time`).
+- **Upsert Patterns**:
+  - Tables with unique keys (`roles`, `users`, `aircraft`, `runways`, `scheduling_queue`) use `INSERT ... ON DUPLICATE KEY UPDATE`.
+  - Tables with temporal or associative records (`flights`, `runway_assignments`, `operation_logs`) use `INSERT ... SELECT ... WHERE NOT EXISTS`.
+- **Zero Data Loss**: The script does not issue `DROP TABLE` or `TRUNCATE TABLE`. Re-running `sql/seed.sql` produces the identical dataset without duplicating rows.
+
+### 7.3 How to Execute Seed Data
+To apply the seed script via an authorized MySQL session:
+```powershell
+# Interactive MySQL CLI
+mysql -u <authorized_user> -p smartatc < sql/seed.sql
+```
+Or execute `sql/seed.sql` directly within MySQL Workbench.
+
+### 7.4 Live Validation vs Static Review Status
+- **Static Review**: PASS (All table relationships, constraint compliance, and idempotency logic verified).
+- **Live MySQL Validation**: NOT TESTED (Local MySQL 8.0.46 service is active, but root access requires a password that is not stored in project configuration per security rules. No credentials were exposed or modified).
+

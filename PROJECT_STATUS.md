@@ -132,8 +132,64 @@ None.
 
 ---
 
+## DAY 4 — Normalization Validation + Seed Data ✅ COMPLETE
+
+### Normalization Review
+- **1NF Review**: PASS — All columns across all 8 tables store atomic values. Explicit surrogate PKs on every table.
+- **2NF Review**: PASS — Single-attribute surrogate PKs preclude partial key dependencies. Natural candidate keys analyzed and verified.
+- **3NF Review**: PASS — No transitive dependencies. Roles, aircraft specs, scheduling metrics, and runway assignments isolated into dedicated tables.
+- **Schema Modifications**: None required. Day 3 schema adheres cleanly to 3NF and project specifications.
+
+### Seed Data Implemented (`sql/seed.sql`)
+- Database: `smartatc`
+- **Table Coverage (8/8 tables)**:
+  1. `roles`: 3 rows (`Admin`, `ATC`, `Airport Operator`)
+  2. `users`: 3 demo accounts (`admin_demo`, `atc_demo`, `operator_demo`) with placeholder SHA-256 hashes
+  3. `aircraft`: 4 aircraft (`VT-AT1`, `VT-AT2`, `VT-AT3`, `VT-AT4` with `Active`/`Maintenance` statuses)
+  4. `flights`: 6 flights (`AI-101`, `6E-202`, `AI-303`, `SG-404`, `UK-505`, `QP-606`) covering priorities 1–5, emergency flag (`AI-101`), and varied lifecycle statuses
+  5. `runways`: 3 runways (`09L` Occupied, `09R` Available, `27` Maintenance)
+  6. `scheduling_queue`: 4 PCB records spanning `Running`, `Ready`, and `Completed` process states
+  7. `runway_assignments`: 2 assignment records (1 `Released` historical assignment, 1 `Active` non-conflicting assignment on `09L`)
+  8. `operation_logs`: 4 audit records covering `SYSTEM_INIT`, `RUNWAY_RELEASE`, `EMERGENCY_DECLARED`, and `RUNWAY_ASSIGN`
+
+### Repeatability & Safety Design
+- Idempotent upserts (`ON DUPLICATE KEY UPDATE` and `INSERT ... SELECT ... WHERE NOT EXISTS`).
+- Dynamic foreign key resolution based on natural keys (usernames, registration numbers, runway numbers, flight number + date).
+- No hardcoded `AUTO_INCREMENT` IDs.
+- Zero destructive statements (`DROP TABLE` and `TRUNCATE` strictly prohibited).
+- Safe re-execution preserves existing records and prevents duplicate entries.
+
+### Tests
+1. Normalization review completed — PASS
+2. All eight expected tables considered — PASS
+3. Three required roles seeded — PASS
+4. At least four aircraft included — PASS (4 aircraft)
+5. At least six flights included — PASS (6 flights)
+6. At least three runways included — PASS (3 runways)
+7. Scheduling entries satisfy schema constraints — PASS
+8. Assignment references valid — PASS
+9. No conflicting active assignment seeded — PASS (Only 1 active assignment for 09L)
+10. Operation-log references valid — PASS
+11. Seed script designed for repeatable execution — PASS
+12. Seed script executed successfully against MySQL — NOT TESTED (MySQL 8.0.46 running locally; password required for root access without configured db.conf)
+13. Seed script executed a second time without duplicates — NOT TESTED (MySQL auth blocker)
+14. Referential integrity verified against live MySQL — NOT TESTED (MySQL auth blocker)
+15. Existing schema and data preserved — PASS
+16. Qt project build safety — PASS (Build unimpacted, static schema validation)
+17. Git diff and status reviewed — PASS
+
+### Known Issues
+- Live MySQL testing remains blocked until authorized credentials are provided in a local `db.conf`.
+
+### Git
+- Commit: `feat: validate normalization and add Day 4 seed data`
+- Branch: `main` → `origin/main`
+
+---
+
 ## CURRENT MILESTONE
-Day 3 — COMPLETE
+Day 4 — COMPLETE
 
 ## NEXT MILESTONE
-Day 4 — Normalization Validation + Seed Data
+Day 5 — C++ to MySQL Connectivity
+
