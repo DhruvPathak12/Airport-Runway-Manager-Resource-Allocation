@@ -295,3 +295,60 @@ Or execute `sql/seed.sql` directly within MySQL Workbench.
 - **Static Review**: PASS (All table relationships, constraint compliance, and idempotency logic verified).
 - **Live MySQL Validation**: NOT TESTED (Local MySQL 8.0.46 service is active, but root access requires a password that is not stored in project configuration per security rules. No credentials were exposed or modified).
 
+---
+
+## 8. C++ to MySQL Connectivity Architecture (Day 5)
+
+### 8.1 DatabaseManager Implementation
+The database connectivity layer is implemented as a singleton in `src/database/DatabaseManager.h` and `src/database/DatabaseManager.cpp`. It acts as the central boundary for all database interactions across the application.
+
+Key architectural characteristics:
+1. **Single Named Connection**: Operates via a dedicated Qt SQL connection name (`"SmartATCConnection"`). It avoids named connection leaks by closing and removing the connection cleanly during reconnects and application shutdown.
+2. **Deterministic Configuration Resolution**: Automatically locates `db.conf` using a deterministic fallback order:
+   - Current working directory (`./db.conf`)
+   - Executable directory (`<app_dir>/db.conf`)
+   - Parent directory of executable (`<app_dir>/../db.conf`, ensuring development runs from `build/` locate project-root configs).
+3. **INI Format Support**: Uses Qt's `QSettings` to read standard INI files under the `[database]` section.
+4. **Credential Safety**:
+   - Credentials are never hardcoded.
+   - `db.conf` is ignored by Git in `.gitignore`.
+   - Passwords are scrubbed from error messages through `setSanitizedError()`.
+5. **Driver Availability Detection**: Proactively checks `QSqlDatabase::isDriverAvailable("QMYSQL")` before attempting connection creation.
+6. **Read-Only Connectivity Test**: Provides `testConnectivity(&version, &database)` executing strictly read-only queries (`SELECT VERSION(), DATABASE();`). Never issues mutating SQL (`INSERT`, `UPDATE`, `DELETE`, `DROP`).
+
+### 8.2 Configuration Template (`db.conf.example`)
+To configure a local development environment:
+1. Copy `db.conf.example` to `db.conf` in the project root:
+   ```powershell
+   copy db.conf.example db.conf
+   ```
+2. Populate the fields with local credentials:
+   ```ini
+   [database]
+   host=127.0.0.1
+   port=3306
+   database=smartatc
+   username=YOUR_LOCAL_DB_USERNAME
+   password=YOUR_LOCAL_DB_PASSWORD
+   ```
+3. Required keys:
+   - `host`: Hostname or IP address (e.g. `127.0.0.1` or `localhost`).
+   - `port`: Port number between 1 and 65535 (default: 3306).
+   - `database`: Target database (`smartatc`).
+   - `username`: Authorized database user.
+   - `password`: Account password (optional if passwordless).
+
+### 8.3 Application Service Integration
+The `ApplicationService` coordinator invokes `DatabaseManager` during startup via `initialize()` and shuts it down via `shutdown()`:
+- Missing driver or missing database does not crash the desktop GUI. The desktop application starts in offline/unconnected mode.
+- Does not repeatedly loop or poll connection attempts on failure.
+
+### 8.4 Qt SQL / QMYSQL Driver Status & Resolution
+- **Qt Version**: Qt 6.11.2 (MinGW 64-bit, GCC 13.1.0)
+- **Built-in Drivers in Kit**: `QIBASE`, `QSQLITE`, `QMIMER`, `QOCI`, `QODBC`, `QPSQL`.
+- **Status of QMYSQL**: Not pre-bundled in the stock Qt 6.11.2 MinGW binary distribution (`qsqlmysql.dll` missing from `C:\Qt\6.11.2\mingw_64\plugins\sqldrivers`).
+- **Resolution Path**:
+  To enable live MySQL connectivity with this MinGW Qt kit, the Qt MySQL driver plugin must be built against the local MySQL C client library (`C:\Program Files\MySQL\MySQL Server 8.0\include` and `libmysql.dll`/`libmysql.lib`), or an authorized ODBC DSN can be configured using `QODBC`.
+- **Test Strategy**: Unit tests in `tests/TestDatabaseConnectivity.cpp` validate all configuration parsing, field constraints, port bounds, error sanitization, and driver detection without requiring an active MySQL connection or crashing.
+
+

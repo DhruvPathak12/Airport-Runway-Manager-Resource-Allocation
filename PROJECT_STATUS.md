@@ -187,9 +187,58 @@ None.
 
 ---
 
+## DAY 5 — C++ to MySQL Connectivity ✅ COMPLETE
+
+### Files Created/Modified
+- `src/database/DatabaseManager.h` (Enhanced singleton interface, config accessors, driver checking, read-only test query)
+- `src/database/DatabaseManager.cpp` (Implemented INI config parsing, QMYSQL driver verification, safe connection management, error sanitization, read-only test queries)
+- `src/services/ApplicationService.h` (Added `checkDatabaseConnection()` signature)
+- `src/services/ApplicationService.cpp` (Integrated DatabaseManager startup/shutdown without crashing or looping)
+- `db.conf.example` (Updated to standard INI `[database]` syntax with clear instructions)
+- `tests/TestDatabaseConnectivity.cpp` (NEW — 15 automated test cases validating configuration parsing, missing fields, invalid ports, driver detection, connection lifecycle, and error sanitization)
+- `CMakeLists.txt` (Added `Qt6::Test` component and `TestDatabaseConnectivity` test executable target)
+- `docs/DATABASE_DESIGN.md` (Added Section 8: C++ to MySQL Connectivity Architecture, config guide, driver analysis)
+- `PROJECT_STATUS.md` (Updated)
+
+### Connection Layer Architecture
+- **Safe INI Configuration**: Loads credentials from `db.conf` via `QSettings` with deterministic path resolution (working dir, executable dir, parent project dir).
+- **Security & Protection**: `.gitignore` strictly protects `db.conf`. Sanitized error reporting strips passwords from log/error outputs.
+- **Connection Management**: Uses unique named connection `SmartATCConnection` with safe scoped close and removal, preventing duplicate named connection leaks.
+- **Graceful Degradation**: Application starts cleanly without crashing when driver or database is unavailable.
+- **Read-Only Verification**: Minimal `testConnectivity()` method executes `SELECT VERSION(), DATABASE();` without any state mutation.
+
+### Tests
+1. Valid configuration parsing — PASS
+2. Missing configuration file handling — PASS
+3. Missing required host validation — PASS
+4. Missing required database validation — PASS
+5. Missing required username validation — PASS
+6. Invalid port range validation — PASS
+7. Default config lookup path resolution — PASS
+8. QMYSQL driver availability detection — PASS (Correctly detected driver absent in current Qt kit)
+9. Connection error handling without driver — PASS (Returns sanitized error, does not crash)
+10. Sanitized error reporting (password scrubbing) — PASS (Passwords scrubbed from error output)
+11. No duplicate named connection leaks — PASS (Handles multiple connect/disconnect cycles cleanly)
+12. Safe disconnect behavior — PASS (Connection closed and removed cleanly)
+13. Read-only query behavior when disconnected — PASS (Returns descriptive error, no crash)
+14. Qt application build — PASS (15/15 units, 0 errors, SmartATC.exe and TestDatabaseConnectivity.exe)
+15. Desktop application launch without database connection — PASS (Process starts, responds, and exits cleanly)
+16. Live MySQL connection execution — NOT TESTED (Blocked by missing QMYSQL plugin in stock Qt 6.11.2 MinGW kit and password requirement on local MySQL root)
+
+### Known Issues
+- `qsqlmysql.dll` plugin is not included in the pre-built Qt 6.11.2 MinGW binary distribution (available drivers: QIBASE, QSQLITE, QMIMER, QOCI, QODBC, QPSQL). To connect directly via QMYSQL, the plugin must be built against MySQL client headers/libraries.
+- Local MySQL 8.0.46 service is active, but live authentication requires local credentials in `db.conf`.
+
+### Git
+- Commit: `feat: implement Day 5 C++ MySQL connectivity`
+- Branch: `main` → `origin/main`
+
+---
+
 ## CURRENT MILESTONE
-Day 4 — COMPLETE
+Day 5 — COMPLETE
 
 ## NEXT MILESTONE
-Day 5 — C++ to MySQL Connectivity
+Day 6 — Login + Roles
+
 

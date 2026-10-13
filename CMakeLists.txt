@@ -71,3 +71,31 @@ target_include_directories(SmartATC
     ${CMAKE_SOURCE_DIR}/ui
     ${CMAKE_SOURCE_DIR}
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Testing
+# ─────────────────────────────────────────────────────────────────────────────
+enable_testing()
+find_package(Qt6 REQUIRED COMPONENTS Test)
+
+add_executable(TestDatabaseConnectivity
+    tests/TestDatabaseConnectivity.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+)
+
+target_link_libraries(TestDatabaseConnectivity
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestDatabaseConnectivity
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestDatabaseConnectivity COMMAND TestDatabaseConnectivity)
+

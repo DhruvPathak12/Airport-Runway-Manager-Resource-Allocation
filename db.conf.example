@@ -9,12 +9,15 @@
 #   3. db.conf is excluded by .gitignore.
 #      It MUST NEVER be committed to Git.
 #
-# All team members must use the same database name.
-# The schema is in sql/schema.sql (available from Day 3).
+# All team members must use the target database name: smartatc
+# The schema is in sql/schema.sql (Day 3).
+# The seed data is in sql/seed.sql (Day 4).
 # =====================================================
 
-host=localhost
+[database]
+host=127.0.0.1
 port=3306
-dbname=airport_runway_db
-user=REPLACE_WITH_YOUR_MYSQL_USERNAME
-password=REPLACE_WITH_YOUR_MYSQL_PASSWORD
+database=smartatc
+username=YOUR_LOCAL_DB_USERNAME
+password=YOUR_LOCAL_DB_PASSWORD
+

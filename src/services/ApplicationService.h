@@ -50,6 +50,13 @@ public:
      */
     void shutdown();
 
+    /**
+     * @brief Checks database connection status and attempts connection if configured.
+     * Safe to call without crashing if DB is unavailable.
+     * @return true if database connection is active and responsive.
+     */
+    bool checkDatabaseConnection();
+
     // ── Sub-service accessors ─────────────────────────────────────────────────
     Scheduler       *scheduler()       const { return m_scheduler; }
     ResourceManager *resourceManager() const { return m_resourceManager; }
@@ -69,3 +76,4 @@ private:
     Scheduler       *m_scheduler       = nullptr;
     ResourceManager *m_resourceManager = nullptr;
 };
+
