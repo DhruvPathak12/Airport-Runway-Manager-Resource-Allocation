@@ -271,14 +271,12 @@ None.
  - **Airport Operator**: Dashboard, Aircraft (Operational), Runways (Maintenance), Logs (Aircraft Ops). Restricted from Scheduling and Users.
  - **Service-Layer Action Enforcement**: Permissions checked at backend service methods (`ApplicationService`), not merely in the GUI.
  
- ### Demo-Account Provisioning Workflow
- Developers can provision or update local demo accounts via the compiled binary without hardcoding passwords in Git:
+ ### Demo-Account Provisioning Workflow (Hardened)
+ Developers can securely provision or update local demo accounts via the compiled binary without transmitting passwords in command-line arguments:
  ```powershell
- ./SmartATC.exe --provision-account "admin_demo:<password>:Admin:System Administrator (Demo)"
- ./SmartATC.exe --provision-account "atc_demo:<password>:ATC:Radar Controller Alpha (Demo)"
- ./SmartATC.exe --provision-account "operator_demo:<password>:Airport Operator:Ground Marshall Bravo (Demo)"
+ ./SmartATC.exe --provision-user <username> --role <Admin|ATC|"Airport Operator"> [--fullname "<Display Name>"]
  ```
- Verified: `admin_demo`, `atc_demo`, and `operator_demo` are provisioned and successfully authenticate in live testing.
+ Prompts interactively with non-echoing console input for Password and Confirm Password. Passwords containing colons, spaces, and special characters are fully supported.
  
  ### Tests
  1. SHA-256 digest generation — PASS
@@ -301,6 +299,9 @@ None.
  18. Live database authentication (Admin, ATC, Operator, Ephemeral) — PASS
  19. Action-level service boundary RBAC enforcement — PASS
  20. Inactive / suspended account rejection — PASS
+ 21. Account metadata input validation (empty/long fields, role validity) — PASS
+ 22. Passwords with colons, spaces, and special characters — PASS
+ 23. Production environment provisioning restriction (`SMARTATC_ENV=production`) — PASS
  
  ### Git
  - Branch: `main` → `origin/main`

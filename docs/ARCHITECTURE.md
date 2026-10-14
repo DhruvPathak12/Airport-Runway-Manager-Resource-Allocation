@@ -221,17 +221,22 @@ Plain C++17 structs — no Qt base class, no database logic embedded.
 - UI navigation dynamically hides and disables unauthorized items based on `Session::allowedNavItems()`.
 - Service/Business methods perform backend permission checks prior to executing protected operations (e.g. `ApplicationService::executeSchedulerCycle()`, `allocateRunwayResource()`, `setRunwayMaintenanceStatus()`).
 
-### Developer Demo Account Provisioning CLI
-For local developer testing, `SmartATC.exe` supports secure, direct CLI provisioning workflows that leverage `PasswordUtils::hash()` without storing or committing plaintext passwords:
-1. **Hash Generation**:
-   ```powershell
-   ./SmartATC.exe --hash-password <plainTextPassword>
-   ```
-2. **Account Provisioning**:
-   ```powershell
-   ./SmartATC.exe --provision-account "<username>:<password>:<roleName>:<fullName>"
-   ```
-   Requires a valid local `db.conf`. Prepares or updates accounts with verified SHA-256 hashes directly in MySQL with status `'Active'`.
+### Hardened Development Account Provisioning Workflow
+To prevent password exposure in process listings, terminal history, and logs, passwords are **never passed as command-line arguments** and are no longer encoded using a colon-separated string.
+
+Development account provisioning uses non-echoing console input with confirmation:
+```powershell
+./SmartATC.exe --provision-user <username> --role <Admin|ATC|"Airport Operator"> [--fullname "<Display Name>"]
+```
+**Interactive Prompts:**
+- `Enter Password: ` (Masked / non-echoing console input via Win32 `SetConsoleMode` / POSIX `termios`)
+- `Confirm Password: ` (Validates match before proceeding)
+
+**Security Controls:**
+- **Zero Command-Line Password Exposure**: Passwords do not appear in process inspection tools, shell logs, or history.
+- **Unrestricted Characters**: Passwords safely support colons (`:`), spaces, punctuation, and unicode without parsing corruption.
+- **Production Guard**: Provisioning immediately aborts with fatal error if `SMARTATC_ENV=production`.
+- **Database Validation**: Validates `db.conf`, sanitizes SQL via bound parameters, and updates or provisions status `'Active'`.
 
 ---
 

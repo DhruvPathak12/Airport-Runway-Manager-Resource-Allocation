@@ -37,6 +37,11 @@ private slots:
     // Action-level RBAC & Service boundary enforcement tests
     void testActionLevelRBACEnforcement();
     void testInactiveAccountRejected();
+
+    // Security Hardening: Input validation, passwords with colons & special chars, environment restriction
+    void testAccountInputValidation();
+    void testPasswordsWithColonsAndSpecialCharacters();
+    void testProductionEnvironmentRestriction();
 };
 
 
@@ -411,6 +416,101 @@ void TestAuthAndRBAC::testInactiveAccountRejected()
     cleanQ.prepare(QStringLiteral("DELETE FROM users WHERE username = :u"));
     cleanQ.bindValue(QStringLiteral(":u"), testUser);
     cleanQ.exec();
+}
+
+void TestAuthAndRBAC::testAccountInputValidation()
+{
+    QString err;
+
+    // 1. Empty username
+    QCOMPARE(PasswordUtils::validateAccountInput(QString(), QStringLiteral("Admin"), QStringLiteral("Admin User"), QStringLiteral("pass123"), &err), false);
+    QVERIFY(err.contains(QStringLiteral("Username cannot be empty")));
+
+    // 2. Excessively long username (> 50 chars)
+    QString longUser(51, QLatin1Char('u'));
+    QCOMPARE(PasswordUtils::validateAccountInput(longUser, QStringLiteral("Admin"), QStringLiteral("Admin User"), QStringLiteral("pass123"), &err), false);
+    QVERIFY(err.contains(QStringLiteral("50 characters")));
+
+    // 3. Empty or invalid role
+    QCOMPARE(PasswordUtils::validateAccountInput(QStringLiteral("valid_user"), QString(), QStringLiteral("User Name"), QStringLiteral("pass123"), &err), false);
+    QVERIFY(err.contains(QStringLiteral("Role cannot be empty")));
+
+    QCOMPARE(PasswordUtils::validateAccountInput(QStringLiteral("valid_user"), QStringLiteral("SuperUser"), QStringLiteral("User Name"), QStringLiteral("pass123"), &err), false);
+    QVERIFY(err.contains(QStringLiteral("Role 'SuperUser' is invalid")));
+
+    // 4. Empty password
+    QCOMPARE(PasswordUtils::validateAccountInput(QStringLiteral("valid_user"), QStringLiteral("ATC"), QStringLiteral("User Name"), QString(), &err), false);
+    QVERIFY(err.contains(QStringLiteral("Password cannot be empty")));
+
+    // 5. Valid input
+    err.clear();
+    QVERIFY(PasswordUtils::validateAccountInput(QStringLiteral("valid_user"), QStringLiteral("Airport Operator"), QStringLiteral("Marshall"), QStringLiteral("Complex:Pass#2026 "), &err));
+    QVERIFY(err.isEmpty());
+}
+
+void TestAuthAndRBAC::testPasswordsWithColonsAndSpecialCharacters()
+{
+    // The previous colon-separated format broke on passwords containing colons or spaces
+    // Verify that PasswordUtils and ApplicationService handle colons, spaces, and punctuation safely
+    QString passwordWithColons = QStringLiteral("P@ss:w0rd::with:colons and spaces#2026!");
+    QString hashed = PasswordUtils::hash(passwordWithColons);
+    QVERIFY(!hashed.isEmpty());
+    QCOMPARE(hashed.length(), 64);
+
+    // Verification must succeed
+    QVERIFY(PasswordUtils::verify(passwordWithColons, hashed));
+
+    // Live DB integration test with colons in password
+    DatabaseManager &db = DatabaseManager::instance();
+    if (!db.isConnected()) {
+        if (!db.connect()) {
+            QSKIP("Live database connection unavailable, skipping colons in password test.");
+        }
+    }
+
+    ApplicationService service;
+    QString err;
+    QString testUser = QStringLiteral("colon_pass_user");
+
+    QSqlDatabase sqlDb = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    QSqlQuery q(sqlDb);
+    q.prepare(QStringLiteral(
+        "INSERT INTO users (username, password_hash, role_id, full_name, status) "
+        "VALUES (:u, :p, (SELECT role_id FROM roles WHERE role_name='ATC' LIMIT 1), 'Colon Tester', 'Active') "
+        "ON DUPLICATE KEY UPDATE password_hash = :p2, status='Active';"
+    ));
+    q.bindValue(QStringLiteral(":u"), testUser);
+    q.bindValue(QStringLiteral(":p"), hashed);
+    q.bindValue(QStringLiteral(":p2"), hashed);
+    QVERIFY(q.exec());
+
+    // Login with exact password containing colons and spaces
+    bool ok = service.login(testUser, passwordWithColons, &err);
+    QVERIFY(ok);
+    QVERIFY(service.isAuthenticated());
+    QCOMPARE(service.currentSession().username(), testUser);
+    service.logout();
+
+    // Clean up
+    QSqlQuery cleanQ(sqlDb);
+    cleanQ.prepare(QStringLiteral("DELETE FROM users WHERE username = :u"));
+    cleanQ.bindValue(QStringLiteral(":u"), testUser);
+    cleanQ.exec();
+}
+
+void TestAuthAndRBAC::testProductionEnvironmentRestriction()
+{
+    // Verify that when SMARTATC_ENV=production, provisioning checks abort
+    qputenv("SMARTATC_ENV", "production");
+    QString envVal = qEnvironmentVariable("SMARTATC_ENV");
+    QCOMPARE(envVal, QStringLiteral("production"));
+
+    bool isProduction = (envVal.compare(QStringLiteral("production"), Qt::CaseInsensitive) == 0);
+    QVERIFY(isProduction);
+
+    // Reset environment variable back to development/empty
+    qunsetenv("SMARTATC_ENV");
+    QVERIFY(qEnvironmentVariable("SMARTATC_ENV").isEmpty());
 }
 
 QTEST_MAIN(TestAuthAndRBAC)

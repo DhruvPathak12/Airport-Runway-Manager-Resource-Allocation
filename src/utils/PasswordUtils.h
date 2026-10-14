@@ -36,6 +36,21 @@ public:
      */
     static bool verify(const QString &plaintext, const QString &storedHash);
 
+    /**
+     * @brief Reads a password securely from standard input without echoing characters.
+     * @param prompt The prompt string to display to the user.
+     * @return The entered password, or empty string on failure/cancellation.
+     */
+    static QString readPasswordSecurely(const QString &prompt);
+
+    /**
+     * @brief Validates that candidate account metadata and password meet requirements.
+     * @return true if valid, false otherwise with outError populated.
+     */
+    static bool validateAccountInput(const QString &username, const QString &roleName,
+                                     const QString &fullName, const QString &password,
+                                     QString *outError = nullptr);
+
 private:
     PasswordUtils() = delete;  // Static utility — not instantiable
 };
