@@ -292,6 +292,13 @@ public:
      */
     bool syncReadyQueueFromDatabase(QString *outError = nullptr);
 
+    /**
+     * @brief Dispatches the highest-priority eligible process using Non-Preemptive Priority Scheduling.
+     * Enforces RBAC (action:ManageScheduling), updates persistent state in MySQL, and updates
+     * in-memory ReadyQueue and runningProcess state. If DB update fails, in-memory state is preserved.
+     */
+    bool dispatchNextProcess(Models::Process *outDispatched = nullptr, QString *outError = nullptr);
+
 signals:
     /**
      * @brief Emitted when the application is fully initialized and ready.

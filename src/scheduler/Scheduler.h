@@ -49,19 +49,72 @@ public:
     ~Scheduler() override = default;
 
     /**
+     * @brief Detailed result of a dispatch attempt in non-preemptive priority scheduling.
+     */
+    struct DispatchResult {
+        bool success = false;
+        Models::Process process;
+        QString reason;
+    };
+
+    /**
      * @brief Executes one scheduling cycle using Non-Preemptive Priority Scheduling.
-     *
-     * Algorithm (implemented Day 11):
-     *   1. Fetch all flights in the scheduling queue with status 'Waiting'.
-     *   2. Sort by (priority ASC, arrival_time ASC) — lower priority number = higher priority.
-     *   3. Assign each flight in order: mark as Running, record CT, compute TAT and WT.
-     *   4. Update the database (scheduling_queue table).
-     *
-     * In Phase 1, effective_priority = base_priority (no aging).
-     *
-     * Implementation: Day 11.
+     * Selects and dispatches one highest-priority process from the ready queue.
      */
     void runScheduler();
+
+    /**
+     * @brief Selects the best eligible READY process from the ready queue without dispatching or removing it.
+     * Deterministic selection:
+     *   1. Lowest numeric effectivePriority wins (1=Highest ... 5=Lowest).
+     *   2. Earlier arrivalTime breaks priority ties.
+     *   3. Smaller flightId breaks arrivalTime ties.
+     *
+     * @param outProcess Optional output pointer receiving the selected candidate.
+     * @param outReason  Optional output pointer receiving the explanation if no candidate can be selected.
+     * @return true if an eligible candidate process was selected; false otherwise.
+     */
+    bool selectNextProcess(Models::Process *outProcess = nullptr, QString *outReason = nullptr) const;
+
+    /**
+     * @brief Dispatches the highest-priority eligible process from READY to RUNNING.
+     * Validates that:
+     *   - No process is currently RUNNING (non-preemptive simulation rule).
+     *   - The ready queue is not empty and has an eligible process.
+     *   - The candidate can legally transition from READY to RUNNING.
+     * If valid, updates process state to RUNNING, removes it from the ready queue,
+     * tracks it as the currently running process, and emits signals.
+     */
+    DispatchResult dispatchNextProcess();
+
+    /**
+     * @brief Checks if the scheduler currently has an active RUNNING process.
+     */
+    bool hasRunningProcess() const { return m_hasRunningProcess; }
+
+    /**
+     * @brief Returns a copy of the currently running process, if any.
+     */
+    Models::Process runningProcess() const { return m_runningProcess; }
+
+    /**
+     * @brief Returns a pointer to the currently running process, or nullptr if none.
+     */
+    const Models::Process* runningProcessPtr() const {
+        return m_hasRunningProcess ? &m_runningProcess : nullptr;
+    }
+
+    /**
+     * @brief Updates or clears the currently running process state.
+     * Used when the running process transitions to Completed or Blocked, or is reset.
+     */
+    void setRunningProcess(const Models::Process &process);
+    void clearRunningProcess();
+
+    /**
+     * @brief Resets the scheduler state (clears ready queue and running process).
+     */
+    void reset();
 
     /**
      * @brief Returns a reference to the in-memory ready queue.
@@ -76,6 +129,11 @@ public:
 
 signals:
     /**
+     * @brief Emitted when a process is dispatched to RUNNING.
+     */
+    void processDispatched(const Models::Process &process);
+
+    /**
      * @brief Emitted after a scheduling cycle completes.
      * Connected to UI widgets to refresh the scheduling queue view.
      */
@@ -88,4 +146,6 @@ signals:
 
 private:
     SchedulerComponents::ReadyQueue m_readyQueue;
+    Models::Process                 m_runningProcess;
+    bool                            m_hasRunningProcess = false;
 };

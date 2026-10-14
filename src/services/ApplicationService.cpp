@@ -2003,6 +2003,96 @@ bool ApplicationService::syncReadyQueueFromDatabase(QString *outError)
     return true;
 }
 
+bool ApplicationService::dispatchNextProcess(Models::Process *outDispatched, QString *outError)
+{
+    // 1. RBAC check
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot dispatch processes.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to dispatch scheduling processes.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (!m_scheduler) {
+        if (outError) *outError = QStringLiteral("Scheduler service is not initialized.");
+        return false;
+    }
+
+    // 2. Non-preemptive check
+    if (m_scheduler->hasRunningProcess()) {
+        if (outError) {
+            *outError = QStringLiteral("Non-preemptive scheduler busy: process for flight %1 is currently RUNNING.")
+                            .arg(m_scheduler->runningProcess().flightId);
+        }
+        return false;
+    }
+
+    // 3. Select next process candidate
+    Models::Process candidate;
+    QString selectReason;
+    if (!m_scheduler->selectNextProcess(&candidate, &selectReason)) {
+        if (outError) *outError = selectReason;
+        return false;
+    }
+
+    // 4. Validate transition to Running
+    QString transReason;
+    if (!candidate.canTransitionTo(Models::ProcessState::Running, &transReason)) {
+        if (outError) *outError = QStringLiteral("Cannot dispatch flight %1: %2").arg(candidate.flightId).arg(transReason);
+        return false;
+    }
+
+    // 5. Database update if DB is connected
+    if (DatabaseManager::instance().isConnected()) {
+        QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+        if (db.isOpen()) {
+            QSqlQuery q(db);
+            q.prepare(QStringLiteral(
+                "UPDATE scheduling_queue "
+                "SET process_state = 'Running' "
+                "WHERE flight_id = :fid AND process_state = 'Ready';"
+            ));
+            q.bindValue(QStringLiteral(":fid"), candidate.flightId);
+
+            if (!q.exec()) {
+                qWarning() << "[ApplicationService] dispatchNextProcess DB update failed:" << q.lastError().text();
+                if (outError) {
+                    *outError = QStringLiteral("Database update failed during dispatch: %1").arg(q.lastError().text());
+                }
+                return false;
+            }
+
+            if (q.numRowsAffected() == 0) {
+                if (outError) {
+                    *outError = QStringLiteral("Database update failed: process for flight %1 was not in 'Ready' state in database.")
+                                    .arg(candidate.flightId);
+                }
+                return false;
+            }
+        }
+    }
+
+    // 6. Dispatch in Scheduler (removes candidate from ReadyQueue and marks Running)
+    Scheduler::DispatchResult res = m_scheduler->dispatchNextProcess();
+    if (!res.success) {
+        if (outError) *outError = res.reason;
+        return false;
+    }
+
+    if (outDispatched) {
+        *outDispatched = res.process;
+    }
+
+    emit processesChanged();
+    return true;
+}
+
 
 
 
