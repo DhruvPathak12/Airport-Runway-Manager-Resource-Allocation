@@ -7,6 +7,7 @@
 
 class ApplicationService;
 class LoginView;
+class FlightsView;
 class QPushButton;
 
 /**
@@ -38,6 +39,7 @@ private:
     // ── UI components ─────────────────────────────────────────────────────────
     QStackedWidget *m_mainStack     = nullptr; // 0: LoginView, 1: Main shell
     LoginView      *m_loginView     = nullptr;
+    FlightsView    *m_flightsView   = nullptr;
     QWidget        *m_appShell      = nullptr;
 
     QListWidget    *m_navList       = nullptr;

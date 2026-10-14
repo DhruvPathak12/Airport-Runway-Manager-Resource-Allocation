@@ -29,6 +29,7 @@ static const struct {
 static constexpr int NAV_COUNT = sizeof(NAV_ITEMS) / sizeof(NAV_ITEMS[0]);
 
 #include "ui/LoginView.h"
+#include "ui/FlightsView.h"
 #include <QPushButton>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -179,9 +180,14 @@ void MainWindow::setupNavigation()
 void MainWindow::setupPages()
 {
     for (int i = 0; i < NAV_COUNT; ++i) {
-        m_pageStack->addWidget(
-            makePlaceholderPage(NAV_ITEMS[i].label, NAV_ITEMS[i].description)
-        );
+        if (i == 1) { // Flights page (Day 7)
+            m_flightsView = new FlightsView(m_service, this);
+            m_pageStack->addWidget(m_flightsView);
+        } else {
+            m_pageStack->addWidget(
+                makePlaceholderPage(NAV_ITEMS[i].label, NAV_ITEMS[i].description)
+            );
+        }
     }
 }
 
@@ -224,6 +230,9 @@ void MainWindow::onNavItemChanged(int row)
 {
     if (row >= 0 && row < m_pageStack->count()) {
         m_pageStack->setCurrentIndex(row);
+        if (row == 1 && m_flightsView) {
+            m_flightsView->refreshFlights();
+        }
     }
 }
 
@@ -288,6 +297,11 @@ void MainWindow::onUserLoggedIn()
 
     applyRolePermissions();
     updateDatabaseStatus();
+
+    if (m_flightsView) {
+        m_flightsView->updatePermissions();
+        m_flightsView->refreshFlights();
+    }
 
     m_mainStack->setCurrentWidget(m_appShell);
 }

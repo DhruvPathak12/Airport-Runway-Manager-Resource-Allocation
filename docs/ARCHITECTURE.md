@@ -263,3 +263,43 @@ ATC assigns runway
     → ResourceManager emits runwayStatusChanged()
     → MainWindow refreshes runway widget
 ```
+
+---
+
+## 10. Flight Management Architecture (Day 7)
+
+```
+┌────────────────────────────────────────────────────────┐
+│  FlightsView (ui/FlightsView.h, .cpp)                  │
+│  - QTableWidget displaying active/persisted flights    │
+│  - Multi-attribute search & status filter combo        │
+│  - Add / Edit / Delete action buttons (ATC role only)   │
+│  - FlightDialog (ui/FlightDialog.h, .cpp) modal form   │
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│  ApplicationService (src/services/)                    │
+│  - getAllFlights(), getFlightById()                   │
+│  - createFlight(), updateFlight(), deleteFlight()      │
+│  - canDeleteFlight(), getAvailableAircraft()           │
+│  - Service-boundary RBAC: action:ManageFlights check  │
+│  - Emits flightsChanged() signal on database mutations │
+└───────────────────────────┬────────────────────────────┘
+                            │ Parameterized Qt SQL queries
+┌───────────────────────────▼────────────────────────────┐
+│  DatabaseManager (src/database/) → MySQL 8.0           │
+│  - flights table (PK flight_id, FK aircraft_id)        │
+│  - Foreign-key protection against delete (RESTRICT)   │
+└────────────────────────────────────────────────────────┘
+```
+
+### Architectural Key Decisions:
+- **Zero Raw Form Concatenation**: All SQL statements use Qt SQL prepared queries (`QSqlQuery::prepare()`) and bound values (`bindValue()`).
+- **Two-Tier RBAC**:
+  - UI Tier: `FlightsView` hides/disables Add/Edit/Delete buttons and shows a Read-Only notice for Admin and Airport Operator sessions.
+  - Service Tier: `ApplicationService` enforces `m_session.hasPermission("action:ManageFlights")` on all write/mutate operations, returning explicit authorization errors for unauthenticated or unauthorized callers.
+- **Safe Delete & Referential Integrity**:
+  - `runway_assignments` defines `CONSTRAINT fk_ra_flight_id FOREIGN KEY (flight_id) REFERENCES flights (flight_id) ON DELETE RESTRICT`.
+  - `ApplicationService::canDeleteFlight()` and `deleteFlight()` catch foreign key constraints (MySQL error 1451) gracefully.
+  - The GUI prompts controllers to transition referenced flights to `'Cancelled'` status rather than destructive deletion, keeping operational audit trails intact.
+

@@ -2,8 +2,11 @@
 
 #include <QObject>
 #include <QString>
+#include <QList>
+#include <QPair>
 
 #include "models/Session.h"
+#include "models/Flight.h"
 
 class Scheduler;
 class ResourceManager;
@@ -111,6 +114,51 @@ public:
      */
     bool setRunwayMaintenanceStatus(int runwayId, bool inMaintenance, QString *outError = nullptr);
 
+    // ── Flight Management Methods (Day 7) ────────────────────────────────────
+    /**
+     * @brief Fetches all flights, optionally filtered by search text and status.
+     * Allowed for: Admin, ATC, Airport Operator (page:Flights).
+     */
+    QList<Models::Flight> getAllFlights(const QString &searchFilter = QString(),
+                                       const QString &statusFilter = QString(),
+                                       QString *outError = nullptr);
+
+    /**
+     * @brief Fetches an individual flight by ID.
+     * Allowed for: Admin, ATC, Airport Operator (page:Flights).
+     */
+    bool getFlightById(int flightId, Models::Flight &outFlight, QString *outError = nullptr);
+
+    /**
+     * @brief Creates a new flight record in MySQL with full validation.
+     * Allowed only for ATC role (action:ManageFlights).
+     */
+    bool createFlight(const Models::Flight &flight, QString *outError = nullptr);
+
+    /**
+     * @brief Updates an existing flight record in MySQL with full validation.
+     * Allowed only for ATC role (action:ManageFlights).
+     */
+    bool updateFlight(const Models::Flight &flight, QString *outError = nullptr);
+
+    /**
+     * @brief Safely deletes a flight record if no referential constraints block it.
+     * Allowed only for ATC role (action:ManageFlights).
+     */
+    bool deleteFlight(int flightId, QString *outError = nullptr);
+
+    /**
+     * @brief Checks if a flight can be deleted safely without foreign-key conflict.
+     * Returns true if safe; false with an explanatory reason if related records exist.
+     */
+    bool canDeleteFlight(int flightId, QString *outReason = nullptr);
+
+    /**
+     * @brief Returns a list of available aircraft for flight assignment.
+     * Returns pairs of (aircraft_id, "VT-AT1 — Boeing 737-800 [Active]").
+     */
+    QList<QPair<int, QString>> getAvailableAircraft(QString *outError = nullptr);
+
 signals:
     /**
      * @brief Emitted when the application is fully initialized and ready.
@@ -131,6 +179,11 @@ signals:
      * @brief Emitted when a fatal error occurs during initialization.
      */
     void initializationFailed(const QString &reason);
+
+    /**
+     * @brief Emitted when flight records are created, updated, or deleted.
+     */
+    void flightsChanged();
 
 private:
     Scheduler       *m_scheduler       = nullptr;

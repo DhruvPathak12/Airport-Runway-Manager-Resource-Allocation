@@ -30,6 +30,10 @@ set(APP_SOURCES
     ui/MainWindow.cpp
     ui/LoginView.h
     ui/LoginView.cpp
+    ui/FlightDialog.h
+    ui/FlightDialog.cpp
+    ui/FlightsView.h
+    ui/FlightsView.cpp
 
     # Service layer (src/services/)
     src/services/ApplicationService.h
@@ -133,5 +137,37 @@ target_include_directories(TestAuthAndRBAC
 )
 
 add_test(NAME TestAuthAndRBAC COMMAND TestAuthAndRBAC)
+
+add_executable(TestFlightManagement
+    tests/TestFlightManagement.cpp
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cpp
+    src/models/Session.h
+    src/models/Session.cpp
+    src/models/Flight.h
+    src/services/ApplicationService.h
+    src/services/ApplicationService.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/scheduler/Scheduler.h
+    src/scheduler/Scheduler.cpp
+    src/resource/ResourceManager.h
+    src/resource/ResourceManager.cpp
+)
+
+target_link_libraries(TestFlightManagement
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestFlightManagement
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestFlightManagement COMMAND TestFlightManagement)
 
 

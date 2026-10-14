@@ -307,11 +307,105 @@ None.
  - Branch: `main` → `origin/main`
  
  ---
- 
- ## CURRENT MILESTONE
- Day 6 — COMPLETE (Verified & Hardened)
- 
- ## NEXT MILESTONE
- Day 7 — Flight Management
+
+## DAY 7 — Flight Management (CRUD + MySQL Integration) ✅ COMPLETE
+
+### Files Created/Modified
+- `src/models/Flight.h` (Extended flight model with `source`, `origin` compatibility, `flightType`, `priority` (1–5), `isEmergency`, `operationalStatus`, `scheduledTime`, `createdAt`, `aircraftRegistration`, and robust client-side validation logic)
+- `src/services/ApplicationService.h` (Added `getAllFlights()`, `getFlightById()`, `createFlight()`, `updateFlight()`, `deleteFlight()`, `canDeleteFlight()`, `getAvailableAircraft()`, and `flightsChanged()` signal)
+- `src/services/ApplicationService.cpp` (Implemented flight data access with parameterized queries, role checks, safe deletion with foreign-key constraint protection, and aircraft lookup)
+- `ui/FlightDialog.h` (NEW — Dialog header for modal Add/Edit flight form)
+- `ui/FlightDialog.cpp` (NEW — Form dialog implementation with inputs, validation warnings, and aircraft selection)
+- `ui/FlightsView.h` (NEW — Flight Management view header with table, toolbar, and state switching)
+- `ui/FlightsView.cpp` (NEW — Interactive flight operations table, instant search, status filtering, badge formatting, and safe deletion workflow)
+- `ui/MainWindow.h` (Added `m_flightsView` member and forward declaration)
+- `ui/MainWindow.cpp` (Integrated `FlightsView` replacing placeholder page 1, wired login/role permission updates and automatic refreshing)
+- `tests/TestFlightManagement.cpp` (NEW — Comprehensive test suite with 23 unit/integration tests covering validation, service-layer RBAC, and live MySQL CRUD)
+- `CMakeLists.txt` (Registered new UI files in `APP_SOURCES` and added `TestFlightManagement` test target)
+- `docs/ARCHITECTURE.md` (Updated with Day 7 Flight Management architecture details)
+- `PROJECT_STATUS.md` (Updated)
+
+### Flight CRUD Capabilities
+1. **View / Read**: Display persisted flights in a structured Qt table showing Flight ID, Flight #, Airline, Flight Type, Route (`source → destination`), Scheduled Time, Priority, Emergency indicator, Operational Status, and Assigned Aircraft.
+2. **Search & Filter**: Real-time multi-column search (`flight_number`, `airline`, `source`, `destination`, `registration_number`) and status filtering (`All`, `Scheduled`, `Taxiing`, `Cleared`, `Landed`, `Departed`, `Cancelled`).
+3. **Create**: Modal dialog allowing authorized users to create flight records with client and service validation, persisting directly to MySQL `flights` table.
+4. **Edit**: Full record modification for existing flights with bound parameters, verifying record existence.
+5. **Safe Delete & Referential Integrity**: Delete flight records safely. If foreign key constraints (e.g. `fk_ra_flight_id` in `runway_assignments` with `ON DELETE RESTRICT`) prevent deletion, the operation is blocked gracefully, diagnostic explanations are provided, and users are offered the safe operational alternative to set status to `Cancelled`.
+6. **Aircraft Assignment**: Fetches available aircraft records dynamically from the `aircraft` table for assignment dropdowns.
+
+### Form Validation Rules
+- **Flight Number**: Required, non-empty, 1–10 characters.
+- **Airline**: Required, non-empty, 1–100 characters.
+- **Source & Destination**: Required, non-empty, 1–100 characters each; source and destination cannot be identical (case-insensitive check).
+- **Flight Type**: Must be either `'Arrival'` or `'Departure'`.
+- **Priority**: Enforced integer range between 1 (highest) and 5 (lowest).
+- **Emergency Flag**: Boolean flag (0 or 1); independent from operational status.
+- **Operational Status**: Must be one of `'Scheduled'`, `'Taxiing'`, `'Cleared'`, `'Landed'`, `'Departed'`, `'Cancelled'`.
+- **Scheduled Time**: Must be a valid date and time.
+- **Aircraft ID**: Non-negative integer (0 denotes unassigned / NULL in DB; >0 must exist in `aircraft` table).
+
+### Role Permissions & Service-Boundary Enforcement
+- **Admin**: Read-only access to Flights page (view and refresh). Add, Edit, Delete buttons hidden/disabled in GUI; calls to mutate flights are rejected at service boundary (`ApplicationService`).
+- **ATC**: Full flight operations management (View, Refresh, Add, Edit, Delete/Cancel). Authorized for `page:Flights` and `action:ManageFlights`.
+- **Airport Operator**: Read-only access to Flights page (view and refresh). Mutate calls rejected at service boundary.
+- **Unauthenticated**: All flight queries and mutations rejected.
+
+### Safe Deletion & Referential Integrity
+- Checked against foreign keys before deletion (`runway_assignments` has `ON DELETE RESTRICT`).
+- When deletion is blocked by existing runway assignments, MySQL error 1451 is caught gracefully.
+- The GUI presents a prompt allowing the ATC controller to update status to `'Cancelled'` instead of destructive hard delete, preserving audit history.
+
+### Tests Executed
+1. `TestFlightManagement::initTestCase` — PASS
+2. `TestFlightManagement::testValidFlightValidation` — PASS
+3. `TestFlightManagement::testEmptyFlightNumberRejection` — PASS
+4. `TestFlightManagement::testExcessiveFlightNumberLength` — PASS
+5. `TestFlightManagement::testEmptyAirlineRejection` — PASS
+6. `TestFlightManagement::testEmptySourceAndDestinationRejection` — PASS
+7. `TestFlightManagement::testIdenticalSourceAndDestinationRejection` — PASS
+8. `TestFlightManagement::testPriorityRangeValidation` — PASS
+9. `TestFlightManagement::testInvalidFlightTypeRejection` — PASS
+10. `TestFlightManagement::testInvalidOperationalStatusRejection` — PASS
+11. `TestFlightManagement::testInvalidScheduledTimeRejection` — PASS
+12. `TestFlightManagement::testNegativeAircraftIdRejection` — PASS
+13. `TestFlightManagement::testOptionalAircraftIdAllowed` — PASS
+14. `TestFlightManagement::testUnauthenticatedCannotCreateOrModify` — PASS
+15. `TestFlightManagement::testAdminRoleDeniedFlightModifications` — PASS
+16. `TestFlightManagement::testOperatorRoleDeniedFlightModifications` — PASS
+17. `TestFlightManagement::testATCRolePermittedFlightModifications` — PASS
+18. `TestFlightManagement::testLiveGetAllFlights` — PASS
+19. `TestFlightManagement::testLiveFlightSearchAndStatusFilter` — PASS
+20. `TestFlightManagement::testLiveCreateReadUpdateDeleteCycle` — PASS
+21. `TestFlightManagement::testLiveReferentialIntegritySafeDelete` — PASS
+22. `TestFlightManagement::testLiveAvailableAircraftOptions` — PASS
+23. `TestFlightManagement::cleanupTestCase` — PASS
+
+All 3 CTest targets pass 100%:
+- `TestDatabaseConnectivity`: Passed
+- `TestAuthAndRBAC`: Passed
+- `TestFlightManagement`: Passed (23/23 tests passed)
+
+### Live MySQL Verification Status
+- Verified against live MySQL 8.0 on localhost with `smartatc` database.
+- Read operations returned seed flights (`AI-101`, `6E-202`, etc.) joined with aircraft registrations.
+- Create/Read/Update/Delete cycle executed with test flight `TEST-701`, verifying persistence and post-delete verification.
+- Referential integrity verified against `AI-101` (blocked by runway assignment, preserved in DB).
+- Test records cleanly removed; seed data fully preserved.
+
+### Known Limitations
+- Scheduling queue integration and PCB process mapping will be implemented in Days 9–12.
+- Aircraft CRUD management is scheduled for Day 8 (Aircraft Management); currently aircraft records are read-only for assignment selection.
+- Full multi-statement ACID transaction monitor will be implemented in Days 21–23.
+
+### Git
+- Branch: `main` → `origin/main`
+
+---
+
+## CURRENT MILESTONE
+Day 7 — COMPLETE
+
+## NEXT MILESTONE
+Day 8 — Aircraft Management
 
 
