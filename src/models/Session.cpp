@@ -48,11 +48,15 @@ bool Session::hasPermission(const QString &permission) const
     }
 
     if (permission == QStringLiteral("page:Aircraft")) {
-        return isAdmin() || isOperator();
+        return isAdmin() || isOperator() || isATC();
     }
 
     if (permission == QStringLiteral("action:ManageAircraft")) {
-        return isOperator();
+        return isAdmin() || isOperator();
+    }
+
+    if (permission == QStringLiteral("action:AdministerAircraft")) {
+        return isAdmin();
     }
 
     if (permission == QStringLiteral("page:Runways")) {

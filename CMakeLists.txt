@@ -34,6 +34,10 @@ set(APP_SOURCES
     ui/FlightDialog.cpp
     ui/FlightsView.h
     ui/FlightsView.cpp
+    ui/AircraftDialog.h
+    ui/AircraftDialog.cpp
+    ui/AircraftView.h
+    ui/AircraftView.cpp
 
     # Service layer (src/services/)
     src/services/ApplicationService.h
@@ -170,4 +174,35 @@ target_include_directories(TestFlightManagement
 
 add_test(NAME TestFlightManagement COMMAND TestFlightManagement)
 
+add_executable(TestAircraftManagement
+    tests/TestAircraftManagement.cpp
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cpp
+    src/models/Session.h
+    src/models/Session.cpp
+    src/models/Aircraft.h
+    src/models/Flight.h
+    src/services/ApplicationService.h
+    src/services/ApplicationService.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/scheduler/Scheduler.h
+    src/scheduler/Scheduler.cpp
+    src/resource/ResourceManager.h
+    src/resource/ResourceManager.cpp
+)
 
+target_link_libraries(TestAircraftManagement
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestAircraftManagement
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestAircraftManagement COMMAND TestAircraftManagement)

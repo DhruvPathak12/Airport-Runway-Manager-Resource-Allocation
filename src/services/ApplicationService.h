@@ -7,6 +7,7 @@
 
 #include "models/Session.h"
 #include "models/Flight.h"
+#include "models/Aircraft.h"
 
 class Scheduler;
 class ResourceManager;
@@ -159,6 +160,59 @@ public:
      */
     QList<QPair<int, QString>> getAvailableAircraft(QString *outError = nullptr);
 
+    // ── Aircraft Management Methods (Day 8) ──────────────────────────────────
+    /**
+     * @brief Fetches all registered aircraft, optionally filtered by search text and status.
+     * Allowed for: Admin, Airport Operator, ATC (page:Aircraft).
+     */
+    QList<Models::Aircraft> getAllAircraft(const QString &searchFilter = QString(),
+                                           const QString &statusFilter = QString(),
+                                           QString *outError = nullptr);
+
+    /**
+     * @brief Fetches a single aircraft by its ID.
+     * Allowed for: Admin, Airport Operator, ATC (page:Aircraft).
+     */
+    bool getAircraftById(int aircraftId, Models::Aircraft &outAircraft, QString *outError = nullptr);
+
+    /**
+     * @brief Fetches a single aircraft by its unique registration number.
+     * Allowed for: Admin, Airport Operator, ATC (page:Aircraft).
+     */
+    bool getAircraftByRegistration(const QString &registration, Models::Aircraft &outAircraft, QString *outError = nullptr);
+
+    /**
+     * @brief Registers a new aircraft in MySQL with full validation.
+     * Allowed only for Admin role (action:AdministerAircraft).
+     */
+    bool createAircraft(Models::Aircraft &aircraft, QString *outError = nullptr);
+    bool createAircraft(const Models::Aircraft &aircraft, QString *outError = nullptr);
+
+    /**
+     * @brief Updates an existing aircraft record in MySQL.
+     * Full modification allowed for Admin.
+     * Airport Operators may only update operational status.
+     */
+    bool updateAircraft(const Models::Aircraft &aircraft, QString *outError = nullptr);
+
+    /**
+     * @brief Updates the operational status of an aircraft (Active | Maintenance | Retired).
+     * Allowed for Admin and Airport Operator (action:ManageAircraft).
+     */
+    bool updateAircraftStatus(int aircraftId, const QString &newStatus, QString *outError = nullptr);
+
+    /**
+     * @brief Checks if an aircraft can be safely deleted without foreign-key conflict.
+     * Returns false if flights reference this aircraft.
+     */
+    bool canDeleteAircraft(int aircraftId, QString *outReason = nullptr);
+
+    /**
+     * @brief Safely deletes an aircraft record from MySQL if no flights reference it.
+     * Allowed only for Admin role (action:AdministerAircraft).
+     */
+    bool deleteAircraft(int aircraftId, QString *outError = nullptr);
+
 signals:
     /**
      * @brief Emitted when the application is fully initialized and ready.
@@ -184,6 +238,11 @@ signals:
      * @brief Emitted when flight records are created, updated, or deleted.
      */
     void flightsChanged();
+
+    /**
+     * @brief Emitted when aircraft records are created, updated, or deleted.
+     */
+    void aircraftChanged();
 
 private:
     Scheduler       *m_scheduler       = nullptr;

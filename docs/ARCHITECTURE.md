@@ -303,3 +303,52 @@ ATC assigns runway
   - `ApplicationService::canDeleteFlight()` and `deleteFlight()` catch foreign key constraints (MySQL error 1451) gracefully.
   - The GUI prompts controllers to transition referenced flights to `'Cancelled'` status rather than destructive deletion, keeping operational audit trails intact.
 
+---
+
+## 11. Aircraft Management Architecture (Day 8)
+
+```
+┌────────────────────────────────────────────────────────┐
+│  AircraftView (ui/AircraftView.h, .cpp)                │
+│  - QTableWidget displaying fleet inventory & flights   │
+│  - Multi-attribute search & status filter combo        │
+│  - Add / Delete buttons (Admin role only)              │
+│  - Edit button (Admin: full; Operator: status only)    │
+│  - AircraftDialog (ui/AircraftDialog.h, .cpp) modal   │
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│  ApplicationService (src/services/)                    │
+│  - getAllAircraft(), getAircraftById()                │
+│  - getAircraftByRegistration()                         │
+│  - createAircraft(), updateAircraft()                  │
+│  - updateAircraftStatus(), deleteAircraft()            │
+│  - canDeleteAircraft()                                 │
+│  - Service-boundary RBAC:                              │
+│    * action:AdministerAircraft (Admin only)            │
+│    * action:ManageAircraft (Admin / Operator)          │
+│    * page:Aircraft (Admin / Operator / ATC)            │
+│  - Emits aircraftChanged() & flightsChanged() signals  │
+└───────────────────────────┬────────────────────────────┘
+                            │ Parameterized Qt SQL queries
+┌───────────────────────────▼────────────────────────────┐
+│  DatabaseManager (src/database/) → MySQL 8.0           │
+│  - aircraft table (PK aircraft_id, UNIQUE reg_no)      │
+│  - flights table references aircraft_id (FK)           │
+│  - Safe delete checks prevent deleting active fleet   │
+└────────────────────────────────────────────────────────┘
+```
+
+### Architectural Key Decisions:
+- **Centralized Multi-Tier RBAC**:
+  - **Admin**: Has `action:AdministerAircraft` for registering new aircraft, editing all specifications, and safely deleting unreferenced aircraft.
+  - **Airport Operator**: Has `action:ManageAircraft` for updating operational statuses (`Active`, `Maintenance`, `Retired`). Registration, deletion, and technical specification modifications are locked in the GUI and rejected at the service layer.
+  - **ATC**: Has `page:Aircraft` read-only access for operational flight assignments; all management actions are prohibited.
+  - **Unauthenticated**: Completely barred from viewing or managing fleet records.
+- **Referential Integrity & Safe Deletion**:
+  - Pre-deletion check verifies whether any flights in `flights` reference `aircraft_id`.
+  - If references exist, hard delete is blocked, explaining the conflict to the user and offering safe retirement (`status = 'Retired'`) to preserve flight operation history.
+- **Cross-Module Synchronization**:
+  - `ApplicationService` emits `aircraftChanged()` and `flightsChanged()` upon aircraft record mutations, ensuring `AircraftView` and `FlightsView` (as well as flight assignment aircraft dropdowns) remain synchronized with MySQL.
+
+

@@ -402,10 +402,103 @@ All 3 CTest targets pass 100%:
 
 ---
 
+## DAY 8 — Aircraft Management (CRUD + MySQL Integration) ✅ COMPLETE
+
+### Files Created/Modified
+- `src/models/Aircraft.h` (Extended with validation, normalization, and flight count tracking)
+- `src/models/Session.cpp` (Centralized RBAC: `action:AdministerAircraft` for Admin, `action:ManageAircraft` for Operator/Admin, `page:Aircraft` for Admin/Operator/ATC)
+- `src/services/ApplicationService.h` (Extended with aircraft CRUD methods, status management, referential integrity check)
+- `src/services/ApplicationService.cpp` (Implemented `getAllAircraft`, `getAircraftById`, `getAircraftByRegistration`, `createAircraft`, `updateAircraft`, `updateAircraftStatus`, `canDeleteAircraft`, `deleteAircraft`)
+- `ui/AircraftDialog.h` (NEW — Modal dialog for registering and editing aircraft with role-aware field controls)
+- `ui/AircraftDialog.cpp` (NEW — Dialog form implementation with validation and operator status-only enforcement)
+- `ui/AircraftView.h` (NEW — Aircraft fleet management GUI view with search, filter, status badge, toolbar)
+- `ui/AircraftView.cpp` (NEW — Table rendering, status color badges, safe deletion dialog with retirement fallback)
+- `ui/MainWindow.h` (Integrated `AircraftView` pointer)
+- `ui/MainWindow.cpp` (Replaced placeholder at navigation row 2 with live `AircraftView`, wired up permissions and refreshes)
+- `CMakeLists.txt` (Added `AircraftDialog` and `AircraftView` to `APP_SOURCES`, created `TestAircraftManagement` test target)
+- `tests/TestAircraftManagement.cpp` (NEW — 25 automated Qt tests covering validation, RBAC, live MySQL CRUD, safe deletion)
+- `docs/ARCHITECTURE.md` (Updated with Aircraft Management module specifications)
+- `PROJECT_STATUS.md` (Updated with Day 8 report)
+
+### Aircraft CRUD Capabilities
+- **Fleet List View**: Dynamic table displaying Aircraft ID, Registration #, Aircraft Type / Model, Passenger Capacity, Operational Status, and Linked Flights count.
+- **Search & Filtering**: Live search by registration or aircraft type combined with operational status filtering (`All`, `Active`, `Maintenance`, `Retired`).
+- **Registration (Add Aircraft)**: Admin-only modal form validating registration uniqueness, aircraft type, capacity (> 0), and status.
+- **Fleet Editing**: Admin can edit all attributes; Airport Operators can update operational status only (registration, type, capacity locked).
+- **Safe Deletion**: Two-phase deletion with referential integrity verification preventing deletion of aircraft referenced by flights. Prompts for safe retirement (`Retired`) when deletion is blocked.
+- **Double-click Inspection**: Authorized users open edit dialog; view-only users view details dialog.
+
+### Validation & Status Rules
+- **Registration Number**: Required, trimmed, normalized to upper case, maximum 20 characters, checked for uniqueness in MySQL.
+- **Aircraft Type**: Required, trimmed, maximum 50 characters.
+- **Passenger Capacity**: Unsigned integer, strictly positive (> 0), maximum 65535 (`SMALLINT UNSIGNED`).
+- **Operational Status**: Strictly validated against schema `ENUM('Active', 'Maintenance', 'Retired')`.
+
+### Role-Based Access Control (RBAC)
+- **Admin**: Full aircraft fleet administration (`page:Aircraft`, `action:ManageAircraft`, `action:AdministerAircraft`). Can add, edit all attributes, and delete unreferenced aircraft.
+- **Airport Operator**: Operational status management (`page:Aircraft`, `action:ManageAircraft`). Can view fleet and update status (`Active`, `Maintenance`, `Retired`). Tampering with registration, model, or capacity is prevented in the UI and rejected at the service boundary. Administrative deletion is blocked.
+- **ATC**: Operational viewing (`page:Aircraft`). Permitted to view fleet for flight assignment; denied all aircraft management and deletion actions.
+- **Unauthenticated**: All aircraft access and mutation rejected.
+
+### Safe Deletion & Referential Integrity
+- Checked against foreign keys before deletion (`flights.aircraft_id`).
+- When deletion is blocked because active or historical flights reference the aircraft, deletion is blocked without altering foreign-key checks.
+- Explanatory feedback is displayed, offering the administrator the option to update the status to `'Retired'` instead of deletion, preserving historical flight data.
+
+### Automated Test Results (25 / 25 Passed)
+1. `TestAircraftManagement::initTestCase` — PASS
+2. `TestAircraftManagement::testValidAircraftValidation` — PASS
+3. `TestAircraftManagement::testEmptyRegistrationRejection` — PASS
+4. `TestAircraftManagement::testExcessiveRegistrationLength` — PASS
+5. `TestAircraftManagement::testEmptyAircraftTypeRejection` — PASS
+6. `TestAircraftManagement::testExcessiveAircraftTypeLength` — PASS
+7. `TestAircraftManagement::testZeroAndNegativeCapacityRejection` — PASS
+8. `TestAircraftManagement::testValidCapacityAccepted` — PASS
+9. `TestAircraftManagement::testInvalidStatusRejection` — PASS
+10. `TestAircraftManagement::testValidStatusesAccepted` — PASS
+11. `TestAircraftManagement::testTrimmingAndNormalization` — PASS
+12. `TestAircraftManagement::testUnauthenticatedCannotAccessOrModify` — PASS
+13. `TestAircraftManagement::testATCRoleViewOnlyDeniedModifications` — PASS
+14. `TestAircraftManagement::testOperatorRoleStatusUpdateOnlyDeniedRegistration` — PASS
+15. `TestAircraftManagement::testOperatorRoleDeniedDeletion` — PASS
+16. `TestAircraftManagement::testAdminRolePermittedFullAircraftAdministration` — PASS
+17. `TestAircraftManagement::testLiveGetAllAircraft` — PASS
+18. `TestAircraftManagement::testLiveAircraftSearchAndStatusFilter` — PASS
+19. `TestAircraftManagement::testLiveGetAircraftById` — PASS
+20. `TestAircraftManagement::testLiveCreateReadUpdateDeleteCycle` — PASS
+21. `TestAircraftManagement::testLiveRejectDuplicateRegistration` — PASS
+22. `TestAircraftManagement::testLiveOperatorStatusUpdateOnly` — PASS
+23. `TestAircraftManagement::testLiveReferentialIntegrityPreventsReferencedDeletion` — PASS
+24. `TestAircraftManagement::testLiveAvailableAircraftForFlightAssignment` — PASS
+25. `TestAircraftManagement::cleanupTestCase` — PASS
+
+All 4 CTest targets pass 100%:
+- `TestDatabaseConnectivity`: Passed
+- `TestAuthAndRBAC`: Passed
+- `TestFlightManagement`: Passed
+- `TestAircraftManagement`: Passed (25/25 tests passed)
+
+### Live MySQL Verification Status
+- Verified against live MySQL 8.0 on localhost with `smartatc` database.
+- Seed records verified (`VT-AT1` Boeing 737-800, `VT-AT2` Airbus A320neo, `VT-AT3` Boeing 777-300ER, `VT-AT4` Bombardier Q400).
+- CRUD cycle verified live with test aircraft `VT-TEST100`.
+- Referential integrity verified live on `VT-AT1` (blocked due to flight reference `AI-101`).
+- Operator status-only update and attribute tampering rejection verified live.
+- Test records cleanly removed; seed data fully preserved.
+
+### Known Limitations
+- Process model creation (PCB) and ready queue insertion are deferred to Day 9.
+- Runway assignment workflows are deferred to Day 14.
+- Priority scheduling and aging algorithms are deferred to Days 11–12.
+
+### Git
+- Branch: `main` → `origin/main`
+
+---
+
 ## CURRENT MILESTONE
-Day 7 — COMPLETE
+Day 8 — COMPLETE
 
 ## NEXT MILESTONE
-Day 8 — Aircraft Management
-
+Day 9 — Process Model (PCB) + Ready Queue
 

@@ -769,4 +769,579 @@ QList<QPair<int, QString>> ApplicationService::getAvailableAircraft(QString *out
     return list;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Aircraft Management Methods (Day 8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+QList<Models::Aircraft> ApplicationService::getAllAircraft(const QString &searchFilter,
+                                                          const QString &statusFilter,
+                                                          QString *outError)
+{
+    QList<Models::Aircraft> results;
+
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot view aircraft.");
+        return results;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("page:Aircraft"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to view aircraft.")
+                            .arg(m_session.role());
+        }
+        return results;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return results;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return results;
+    }
+
+    QString sql = QStringLiteral(
+        "SELECT a.aircraft_id, a.registration_number, a.aircraft_type, a.capacity, a.status, "
+        "       (SELECT COUNT(*) FROM flights f WHERE f.aircraft_id = a.aircraft_id) AS flight_count "
+        "FROM aircraft a "
+        "WHERE 1=1"
+    );
+
+    QString trimmedSearch = searchFilter.trimmed();
+    bool hasSearch = !trimmedSearch.isEmpty();
+    if (hasSearch) {
+        sql += QStringLiteral(" AND (a.registration_number LIKE :search OR a.aircraft_type LIKE :search)");
+    }
+
+    QString trimmedStatus = statusFilter.trimmed();
+    bool hasStatus = !trimmedStatus.isEmpty() && trimmedStatus.compare(QStringLiteral("All"), Qt::CaseInsensitive) != 0;
+    if (hasStatus) {
+        sql += QStringLiteral(" AND a.status = :status");
+    }
+
+    sql += QStringLiteral(" ORDER BY (a.status = 'Active') DESC, (a.status = 'Maintenance') DESC, a.registration_number ASC;");
+
+    QSqlQuery query(db);
+    query.prepare(sql);
+
+    if (hasSearch) {
+        query.bindValue(QStringLiteral(":search"), QStringLiteral("%%1%").arg(trimmedSearch));
+    }
+    if (hasStatus) {
+        query.bindValue(QStringLiteral(":status"), trimmedStatus);
+    }
+
+    if (!query.exec()) {
+        qWarning() << "[ApplicationService] getAllAircraft query failed:" << query.lastError().text();
+        if (outError) {
+            *outError = QStringLiteral("Failed to fetch aircraft: %1")
+                            .arg(query.lastError().databaseText().isEmpty() ? query.lastError().text() : query.lastError().databaseText());
+        }
+        return results;
+    }
+
+    while (query.next()) {
+        Models::Aircraft ac;
+        ac.id = query.value(QStringLiteral("aircraft_id")).toInt();
+        ac.registrationNumber = query.value(QStringLiteral("registration_number")).toString();
+        ac.registrationNo = ac.registrationNumber;
+        ac.aircraftType = query.value(QStringLiteral("aircraft_type")).toString();
+        ac.model = ac.aircraftType;
+        ac.capacity = query.value(QStringLiteral("capacity")).toInt();
+        ac.status = query.value(QStringLiteral("status")).toString();
+        ac.assignedFlightsCount = query.value(QStringLiteral("flight_count")).toInt();
+        results.append(ac);
+    }
+
+    return results;
+}
+
+bool ApplicationService::getAircraftById(int aircraftId, Models::Aircraft &outAircraft, QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot view aircraft.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("page:Aircraft"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to view aircraft.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "SELECT a.aircraft_id, a.registration_number, a.aircraft_type, a.capacity, a.status, "
+        "       (SELECT COUNT(*) FROM flights f WHERE f.aircraft_id = a.aircraft_id) AS flight_count "
+        "FROM aircraft a "
+        "WHERE a.aircraft_id = :id "
+        "LIMIT 1;"
+    ));
+    query.bindValue(QStringLiteral(":id"), aircraftId);
+
+    if (!query.exec()) {
+        qWarning() << "[ApplicationService] getAircraftById query failed:" << query.lastError().text();
+        if (outError) {
+            *outError = QStringLiteral("Failed to fetch aircraft: %1")
+                            .arg(query.lastError().databaseText().isEmpty() ? query.lastError().text() : query.lastError().databaseText());
+        }
+        return false;
+    }
+
+    if (!query.next()) {
+        if (outError) *outError = QStringLiteral("Aircraft record not found.");
+        return false;
+    }
+
+    outAircraft.id = query.value(QStringLiteral("aircraft_id")).toInt();
+    outAircraft.registrationNumber = query.value(QStringLiteral("registration_number")).toString();
+    outAircraft.registrationNo = outAircraft.registrationNumber;
+    outAircraft.aircraftType = query.value(QStringLiteral("aircraft_type")).toString();
+    outAircraft.model = outAircraft.aircraftType;
+    outAircraft.capacity = query.value(QStringLiteral("capacity")).toInt();
+    outAircraft.status = query.value(QStringLiteral("status")).toString();
+    outAircraft.assignedFlightsCount = query.value(QStringLiteral("flight_count")).toInt();
+    return true;
+}
+
+bool ApplicationService::getAircraftByRegistration(const QString &registration, Models::Aircraft &outAircraft, QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot view aircraft.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("page:Aircraft"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to view aircraft.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "SELECT a.aircraft_id, a.registration_number, a.aircraft_type, a.capacity, a.status, "
+        "       (SELECT COUNT(*) FROM flights f WHERE f.aircraft_id = a.aircraft_id) AS flight_count "
+        "FROM aircraft a "
+        "WHERE a.registration_number = :reg "
+        "LIMIT 1;"
+    ));
+    query.bindValue(QStringLiteral(":reg"), registration.trimmed().toUpper());
+
+    if (!query.exec()) {
+        qWarning() << "[ApplicationService] getAircraftByRegistration query failed:" << query.lastError().text();
+        if (outError) {
+            *outError = QStringLiteral("Failed to fetch aircraft: %1")
+                            .arg(query.lastError().databaseText().isEmpty() ? query.lastError().text() : query.lastError().databaseText());
+        }
+        return false;
+    }
+
+    if (!query.next()) {
+        if (outError) *outError = QStringLiteral("Aircraft not found with registration '%1'.").arg(registration);
+        return false;
+    }
+
+    outAircraft.id = query.value(QStringLiteral("aircraft_id")).toInt();
+    outAircraft.registrationNumber = query.value(QStringLiteral("registration_number")).toString();
+    outAircraft.registrationNo = outAircraft.registrationNumber;
+    outAircraft.aircraftType = query.value(QStringLiteral("aircraft_type")).toString();
+    outAircraft.model = outAircraft.aircraftType;
+    outAircraft.capacity = query.value(QStringLiteral("capacity")).toInt();
+    outAircraft.status = query.value(QStringLiteral("status")).toString();
+    outAircraft.assignedFlightsCount = query.value(QStringLiteral("flight_count")).toInt();
+    return true;
+}
+
+bool ApplicationService::createAircraft(Models::Aircraft &aircraft, QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot register aircraft.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:AdministerAircraft"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: Only Administrators can register new aircraft (role '%1' is not authorized).")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (!aircraft.validate(outError)) {
+        return false;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    QString normalizedReg = aircraft.effectiveRegistration();
+
+    // Check unique registration constraint
+    QSqlQuery checkQuery(db);
+    checkQuery.prepare(QStringLiteral("SELECT COUNT(*) FROM aircraft WHERE registration_number = :reg;"));
+    checkQuery.bindValue(QStringLiteral(":reg"), normalizedReg);
+    if (checkQuery.exec() && checkQuery.next()) {
+        if (checkQuery.value(0).toInt() > 0) {
+            if (outError) {
+                *outError = QStringLiteral("An aircraft with registration '%1' is already registered.").arg(normalizedReg);
+            }
+            return false;
+        }
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "INSERT INTO aircraft (registration_number, aircraft_type, capacity, status) "
+        "VALUES (:reg, :type, :capacity, :status);"
+    ));
+    query.bindValue(QStringLiteral(":reg"), normalizedReg);
+    query.bindValue(QStringLiteral(":type"), aircraft.effectiveType());
+    query.bindValue(QStringLiteral(":capacity"), aircraft.capacity);
+    query.bindValue(QStringLiteral(":status"), aircraft.status.trimmed());
+
+    if (!query.exec()) {
+        qWarning() << "[ApplicationService] createAircraft failed:" << query.lastError().text();
+        if (outError) {
+            QString dbErr = query.lastError().databaseText();
+            if (dbErr.contains(QStringLiteral("Duplicate"), Qt::CaseInsensitive) ||
+                query.lastError().nativeErrorCode() == QStringLiteral("1062")) {
+                *outError = QStringLiteral("An aircraft with registration '%1' is already registered.").arg(normalizedReg);
+            } else {
+                *outError = QStringLiteral("Failed to insert aircraft: %1")
+                                .arg(dbErr.isEmpty() ? query.lastError().text() : dbErr);
+            }
+        }
+        return false;
+    }
+
+    aircraft.id = query.lastInsertId().toInt();
+
+    emit aircraftChanged();
+    emit flightsChanged();
+    return true;
+}
+
+bool ApplicationService::createAircraft(const Models::Aircraft &aircraft, QString *outError)
+{
+    Models::Aircraft copy = aircraft;
+    return createAircraft(copy, outError);
+}
+
+bool ApplicationService::updateAircraft(const Models::Aircraft &aircraft, QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot update aircraft.");
+        return false;
+    }
+
+    if (aircraft.id <= 0) {
+        if (outError) *outError = QStringLiteral("Invalid aircraft ID for update.");
+        return false;
+    }
+
+    if (!aircraft.validate(outError)) {
+        return false;
+    }
+
+    Models::Aircraft existing;
+    if (!getAircraftById(aircraft.id, existing, outError)) {
+        return false;
+    }
+
+    // Role-specific update enforcement:
+    // Airport Operator: May ONLY update operational status.
+    // Admin: May update all fields.
+    if (m_session.isOperator()) {
+        if (existing.effectiveRegistration() != aircraft.effectiveRegistration() ||
+            existing.effectiveType() != aircraft.effectiveType() ||
+            existing.capacity != aircraft.capacity) {
+            if (outError) {
+                *outError = QStringLiteral("Access denied: Airport Operators may only update aircraft operational status. "
+                                           "Modifying registration, type, or capacity requires Administrator privileges.");
+            }
+            return false;
+        }
+        return updateAircraftStatus(aircraft.id, aircraft.status, outError);
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:AdministerAircraft"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to edit aircraft.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    QString normalizedReg = aircraft.effectiveRegistration();
+
+    // Check unique constraint against other aircraft
+    QSqlQuery checkQuery(db);
+    checkQuery.prepare(QStringLiteral("SELECT COUNT(*) FROM aircraft WHERE registration_number = :reg AND aircraft_id != :id;"));
+    checkQuery.bindValue(QStringLiteral(":reg"), normalizedReg);
+    checkQuery.bindValue(QStringLiteral(":id"), aircraft.id);
+    if (checkQuery.exec() && checkQuery.next()) {
+        if (checkQuery.value(0).toInt() > 0) {
+            if (outError) {
+                *outError = QStringLiteral("An aircraft with registration '%1' already exists.").arg(normalizedReg);
+            }
+            return false;
+        }
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "UPDATE aircraft SET "
+        "  registration_number = :reg, "
+        "  aircraft_type = :type, "
+        "  capacity = :capacity, "
+        "  status = :status "
+        "WHERE aircraft_id = :id;"
+    ));
+    query.bindValue(QStringLiteral(":reg"), normalizedReg);
+    query.bindValue(QStringLiteral(":type"), aircraft.effectiveType());
+    query.bindValue(QStringLiteral(":capacity"), aircraft.capacity);
+    query.bindValue(QStringLiteral(":status"), aircraft.status.trimmed());
+    query.bindValue(QStringLiteral(":id"), aircraft.id);
+
+    if (!query.exec()) {
+        qWarning() << "[ApplicationService] updateAircraft failed:" << query.lastError().text();
+        if (outError) {
+            *outError = QStringLiteral("Failed to update aircraft: %1")
+                            .arg(query.lastError().databaseText().isEmpty() ? query.lastError().text() : query.lastError().databaseText());
+        }
+        return false;
+    }
+
+    emit aircraftChanged();
+    emit flightsChanged();
+    return true;
+}
+
+bool ApplicationService::updateAircraftStatus(int aircraftId, const QString &newStatus, QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot update aircraft status.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:ManageAircraft"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to update aircraft status.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (aircraftId <= 0) {
+        if (outError) *outError = QStringLiteral("Invalid aircraft ID.");
+        return false;
+    }
+
+    static const QStringList validStatuses = {
+        QStringLiteral("Active"),
+        QStringLiteral("Maintenance"),
+        QStringLiteral("Retired")
+    };
+    if (!validStatuses.contains(newStatus.trimmed())) {
+        if (outError) {
+            *outError = QStringLiteral("Invalid status '%1'. Permitted values: Active, Maintenance, Retired.").arg(newStatus);
+        }
+        return false;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral("UPDATE aircraft SET status = :status WHERE aircraft_id = :id;"));
+    query.bindValue(QStringLiteral(":status"), newStatus.trimmed());
+    query.bindValue(QStringLiteral(":id"), aircraftId);
+
+    if (!query.exec()) {
+        qWarning() << "[ApplicationService] updateAircraftStatus failed:" << query.lastError().text();
+        if (outError) {
+            *outError = QStringLiteral("Failed to update aircraft status: %1")
+                            .arg(query.lastError().databaseText().isEmpty() ? query.lastError().text() : query.lastError().databaseText());
+        }
+        return false;
+    }
+
+    if (query.numRowsAffected() == 0) {
+        // Confirm whether record exists
+        Models::Aircraft check;
+        if (!getAircraftById(aircraftId, check, outError)) {
+            return false;
+        }
+    }
+
+    emit aircraftChanged();
+    emit flightsChanged();
+    return true;
+}
+
+bool ApplicationService::canDeleteAircraft(int aircraftId, QString *outReason)
+{
+    if (aircraftId <= 0) {
+        if (outReason) *outReason = QStringLiteral("Invalid aircraft ID.");
+        return false;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outReason) *outReason = QStringLiteral("Database connection is offline.");
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outReason) *outReason = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    // Check if flights reference this aircraft
+    QSqlQuery q(db);
+    q.prepare(QStringLiteral("SELECT COUNT(*) FROM flights WHERE aircraft_id = :id;"));
+    q.bindValue(QStringLiteral(":id"), aircraftId);
+    if (q.exec() && q.next()) {
+        int count = q.value(0).toInt();
+        if (count > 0) {
+            if (outReason) {
+                *outReason = QStringLiteral(
+                    "Cannot delete aircraft: It is referenced by %1 flight record(s). "
+                    "To preserve flight operation history and operational integrity, "
+                    "retirement ('Retired') should be used instead of deleting the aircraft record."
+                ).arg(count);
+            }
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool ApplicationService::deleteAircraft(int aircraftId, QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot delete aircraft.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:AdministerAircraft"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: Only Administrators can delete aircraft (role '%1' is not authorized).")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    QString blockReason;
+    if (!canDeleteAircraft(aircraftId, &blockReason)) {
+        if (outError) *outError = blockReason;
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral("DELETE FROM aircraft WHERE aircraft_id = :id;"));
+    query.bindValue(QStringLiteral(":id"), aircraftId);
+
+    if (!query.exec()) {
+        qWarning() << "[ApplicationService] deleteAircraft query failed:" << query.lastError().text();
+        QString dbErr = query.lastError().databaseText();
+        if (outError) {
+            *outError = QStringLiteral("Database delete failed: %1")
+                            .arg(dbErr.isEmpty() ? query.lastError().text() : dbErr);
+        }
+        return false;
+    }
+
+    if (query.numRowsAffected() == 0) {
+        if (outError) *outError = QStringLiteral("Aircraft not found or already deleted.");
+        return false;
+    }
+
+    emit aircraftChanged();
+    emit flightsChanged();
+    return true;
+}
+
+
 
