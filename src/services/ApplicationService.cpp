@@ -721,6 +721,10 @@ bool ApplicationService::deleteFlight(int flightId, QString *outError)
         return false;
     }
 
+    if (m_scheduler) {
+        m_scheduler->readyQueue().removeByFlightId(flightId);
+    }
+
     emit flightsChanged();
     return true;
 }
@@ -1459,6 +1463,10 @@ bool ApplicationService::createProcessForFlight(int flightId,
     int assignedQueueId = insertQuery.lastInsertId().toInt();
     proc.setQueueId(assignedQueueId);
 
+    if (m_scheduler && proc.state == Models::ProcessState::Ready) {
+        m_scheduler->readyQueue().enqueue(proc);
+    }
+
     if (outProcess) {
         *outProcess = proc;
     }
@@ -1570,6 +1578,10 @@ bool ApplicationService::createProcess(const Models::Process &process,
     if (created.flightNumber.isEmpty()) created.flightNumber = flight.flightNumber;
     if (created.airline.isEmpty()) created.airline = flight.airline;
     if (created.operationalStatus.isEmpty()) created.operationalStatus = flight.operationalStatus;
+
+    if (m_scheduler && created.state == Models::ProcessState::Ready) {
+        m_scheduler->readyQueue().enqueue(created);
+    }
 
     if (outProcess) {
         *outProcess = created;
@@ -1813,6 +1825,184 @@ QList<Models::Process> ApplicationService::getAllProcesses(QString *outError)
 
     return results;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Day 10: Process States and Ready Queue Lifecycle
+// ─────────────────────────────────────────────────────────────────────────────
+
+SchedulerComponents::ReadyQueue* ApplicationService::readyQueue() const
+{
+    return m_scheduler ? &(m_scheduler->readyQueue()) : nullptr;
+}
+
+bool ApplicationService::enqueueProcess(const Models::Process &process, QString *outError)
+{
+    if (!m_scheduler) {
+        if (outError) *outError = QStringLiteral("Scheduler service is not initialized.");
+        return false;
+    }
+    return m_scheduler->readyQueue().enqueue(process, outError);
+}
+
+bool ApplicationService::dequeueProcess(Models::Process *outProcess, QString *outError)
+{
+    if (!m_scheduler) {
+        if (outError) *outError = QStringLiteral("Scheduler service is not initialized.");
+        return false;
+    }
+    return m_scheduler->readyQueue().dequeue(outProcess, outError);
+}
+
+bool ApplicationService::updateProcessState(int flightId,
+                                            Models::ProcessState newState,
+                                            QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot update process states.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to update process states (ATC/Admin only).")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    // 1. Fetch current process from database to evaluate current state
+    Models::Process currentProc;
+    if (!getProcessByFlightId(flightId, currentProc, outError)) {
+        return false;
+    }
+
+    // 2. Validate state transition according to process lifecycle rules
+    if (!currentProc.canTransitionTo(newState, outError)) {
+        return false;
+    }
+
+    // 3. Update database record via parameterized query
+    QSqlQuery updateQuery(db);
+    if (newState == Models::ProcessState::Completed) {
+        updateQuery.prepare(QStringLiteral(
+            "UPDATE scheduling_queue "
+            "SET process_state = :state, completion_time = CURRENT_TIMESTAMP "
+            "WHERE flight_id = :flightId;"
+        ));
+    } else {
+        updateQuery.prepare(QStringLiteral(
+            "UPDATE scheduling_queue "
+            "SET process_state = :state "
+            "WHERE flight_id = :flightId;"
+        ));
+    }
+    updateQuery.bindValue(QStringLiteral(":state"), Models::Process::stateToDbString(newState));
+    updateQuery.bindValue(QStringLiteral(":flightId"), flightId);
+
+    if (!updateQuery.exec()) {
+        qWarning() << "[ApplicationService] updateProcessState query failed:" << updateQuery.lastError().text();
+        if (outError) {
+            QString dbErr = updateQuery.lastError().databaseText();
+            *outError = QStringLiteral("Database update failed: %1")
+                            .arg(dbErr.isEmpty() ? updateQuery.lastError().text() : dbErr);
+        }
+        return false;
+    }
+
+    // 4. Update in-memory ReadyQueue to maintain queue-state consistency
+    if (m_scheduler) {
+        if (newState != Models::ProcessState::Ready) {
+            // Process moved out of Ready (e.g. Running, Blocked, Completed); remove from ready queue
+            m_scheduler->readyQueue().removeByFlightId(flightId);
+        } else {
+            // Transitioned to Ready (e.g. from Blocked); add to ready queue if not already present
+            if (!m_scheduler->readyQueue().containsFlight(flightId)) {
+                currentProc.state = Models::ProcessState::Ready;
+                m_scheduler->readyQueue().enqueue(currentProc);
+            }
+        }
+    }
+
+    emit processesChanged();
+    return true;
+}
+
+bool ApplicationService::syncReadyQueueFromDatabase(QString *outError)
+{
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    if (!m_scheduler) {
+        if (outError) *outError = QStringLiteral("Scheduler service is not initialized.");
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "SELECT q.queue_id, q.flight_id, q.arrival_time, q.base_priority, q.effective_priority, "
+        "       q.service_time, q.waiting_time, q.turnaround_time, q.completion_time, q.process_state, "
+        "       f.flight_number, f.airline, f.operational_status "
+        "FROM scheduling_queue q "
+        "LEFT JOIN flights f ON q.flight_id = f.flight_id "
+        "WHERE q.process_state = 'Ready' "
+        "ORDER BY q.queue_id ASC;"
+    ));
+
+    if (!query.exec()) {
+        qWarning() << "[ApplicationService] syncReadyQueueFromDatabase query failed:" << query.lastError().text();
+        if (outError) *outError = QStringLiteral("Failed to fetch ready processes: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    m_scheduler->readyQueue().clear();
+
+    while (query.next()) {
+        Models::Process proc;
+        proc.setQueueId(query.value(QStringLiteral("queue_id")).toInt());
+        proc.flightId = query.value(QStringLiteral("flight_id")).toInt();
+        proc.arrivalTime = query.value(QStringLiteral("arrival_time")).toDateTime();
+        proc.basePriority = query.value(QStringLiteral("base_priority")).toInt();
+        proc.effectivePriority = query.value(QStringLiteral("effective_priority")).toInt();
+        proc.serviceTime = query.value(QStringLiteral("service_time")).toInt();
+        proc.waitingTime = query.value(QStringLiteral("waiting_time")).isNull() ? -1 : query.value(QStringLiteral("waiting_time")).toInt();
+        proc.turnaroundTime = query.value(QStringLiteral("turnaround_time")).isNull() ? -1 : query.value(QStringLiteral("turnaround_time")).toInt();
+        proc.completionTime = query.value(QStringLiteral("completion_time")).isNull() ? QDateTime() : query.value(QStringLiteral("completion_time")).toDateTime();
+        proc.state = Models::ProcessState::Ready;
+        proc.flightNumber = query.value(QStringLiteral("flight_number")).toString();
+        proc.airline = query.value(QStringLiteral("airline")).toString();
+        proc.operationalStatus = query.value(QStringLiteral("operational_status")).toString();
+
+        m_scheduler->readyQueue().enqueue(proc);
+    }
+
+    return true;
+}
+
 
 
 

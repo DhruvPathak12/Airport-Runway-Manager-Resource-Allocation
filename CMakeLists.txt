@@ -50,6 +50,8 @@ set(APP_SOURCES
     # Scheduler layer (src/scheduler/)
     src/scheduler/Scheduler.h
     src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
 
     # Resource layer (src/resource/)
     src/resource/ResourceManager.h
@@ -127,6 +129,8 @@ add_executable(TestAuthAndRBAC
     src/database/DatabaseManager.cpp
     src/scheduler/Scheduler.h
     src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -161,6 +165,8 @@ add_executable(TestFlightManagement
     src/database/DatabaseManager.cpp
     src/scheduler/Scheduler.h
     src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -196,6 +202,8 @@ add_executable(TestAircraftManagement
     src/database/DatabaseManager.cpp
     src/scheduler/Scheduler.h
     src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -231,6 +239,8 @@ add_executable(TestProcessModel
     src/database/DatabaseManager.cpp
     src/scheduler/Scheduler.h
     src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -249,4 +259,41 @@ target_include_directories(TestProcessModel
 )
 
 add_test(NAME TestProcessModel COMMAND TestProcessModel)
+
+add_executable(TestReadyQueueAndProcessStates
+    tests/TestReadyQueueAndProcessStates.cpp
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cpp
+    src/models/Session.h
+    src/models/Session.cpp
+    src/models/Aircraft.h
+    src/models/Flight.h
+    src/models/Process.h
+    src/models/Process.cpp
+    src/services/ApplicationService.h
+    src/services/ApplicationService.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/scheduler/Scheduler.h
+    src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
+    src/resource/ResourceManager.h
+    src/resource/ResourceManager.cpp
+)
+
+target_link_libraries(TestReadyQueueAndProcessStates
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestReadyQueueAndProcessStates
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestReadyQueueAndProcessStates COMMAND TestReadyQueueAndProcessStates)
 

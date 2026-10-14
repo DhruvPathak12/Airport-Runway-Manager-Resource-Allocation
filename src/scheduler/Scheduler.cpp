@@ -18,9 +18,3 @@ void Scheduler::runScheduler()
     qDebug() << "[Scheduler] runScheduler() — stub (implemented Day 11)";
     emit schedulingComplete();
 }
-
-QList<Models::Flight> Scheduler::readyQueue() const
-{
-    // TODO (Day 11): Return live snapshot from database.
-    return m_readyQueue;
-}

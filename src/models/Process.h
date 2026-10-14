@@ -79,11 +79,19 @@ struct Process {
 
     // ── Constructors ─────────────────────────────────────────────────────────
     Process();
+    Process(int qid, int fid, int priority = 3, int burstSec = 60, ProcessState st = ProcessState::Ready);
 
     // ── Identity & State Helpers ─────────────────────────────────────────────
     bool isPersisted() const { return id > 0; }
     bool isNew() const { return id == 0; }
     int  processId() const { return flightId; }
+    bool isValid(QString *outError = nullptr) const { return validate(outError); }
+
+    int          getQueueId() const { return queueId; }
+    int          getFlightId() const { return flightId; }
+    int          priority() const { return basePriority; }
+    ProcessState processState() const { return state; }
+    QString      processStateString() const { return stateToString(state); }
 
     void setQueueId(int qid) {
         id = qid;
@@ -105,10 +113,37 @@ struct Process {
      */
     bool validate(QString *outError = nullptr) const;
 
+    // ── Validated State Transitions (Day 10) ──────────────────────────────────
+    /**
+     * @brief Checks whether transitioning to the target state is allowed by process lifecycle.
+     * Supported transitions:
+     *   - New     -> Ready
+     *   - Ready   -> Running
+     *   - Running -> Completed
+     *   - Running -> Blocked
+     *   - Blocked -> Ready
+     *
+     * @param targetState Proposed destination state.
+     * @param outReason   Optional output string explaining why transition is invalid if rejected.
+     * @return true if the transition is allowed.
+     */
+    bool canTransitionTo(ProcessState targetState, QString *outReason = nullptr) const;
+
+    /**
+     * @brief Explicitly transitions the process to targetState if allowed.
+     * Leaves current state unmodified if the transition is rejected.
+     *
+     * @param targetState Proposed destination state.
+     * @param outError    Optional output string receiving error message on rejection.
+     * @return true if state was updated.
+     */
+    bool transitionTo(ProcessState targetState, QString *outError = nullptr);
+
     // ── String Conversions ───────────────────────────────────────────────────
     static QString      stateToString(ProcessState st);
     static QString      stateToDbString(ProcessState st);
     static ProcessState stateFromString(const QString &str, bool *ok = nullptr);
+    static ProcessState stateFromDbString(const QString &str, bool *ok = nullptr) { return stateFromString(str, ok); }
 
     // ── Flight-to-Process Mapping ────────────────────────────────────────────
     /**

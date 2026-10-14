@@ -9,6 +9,7 @@
 #include "models/Flight.h"
 #include "models/Aircraft.h"
 #include "models/Process.h"
+#include "scheduler/ReadyQueue.h"
 
 class Scheduler;
 class ResourceManager;
@@ -258,6 +259,38 @@ public:
      * @brief Fetches all persisted processes from the scheduling queue.
      */
     QList<Models::Process> getAllProcesses(QString *outError = nullptr);
+
+    // ── Process States and Ready Queue Methods (Day 10) ──────────────────────
+    /**
+     * @brief Updates the lifecycle state of a process in MySQL scheduling_queue and in-memory queue.
+     * Validates state transition according to process lifecycle rules.
+     * Enforces RBAC (action:ManageScheduling - ATC/Admin only).
+     */
+    bool updateProcessState(int flightId,
+                            Models::ProcessState newState,
+                            QString *outError = nullptr);
+
+    /**
+     * @brief Accessor to the in-memory ready queue maintained by the Scheduler.
+     */
+    SchedulerComponents::ReadyQueue* readyQueue() const;
+
+    /**
+     * @brief Enqueues a process into the in-memory ready queue.
+     * Validates process and verifies state == Ready and non-duplicate.
+     */
+    bool enqueueProcess(const Models::Process &process, QString *outError = nullptr);
+
+    /**
+     * @brief Dequeues the next process from the in-memory ready queue (FIFO).
+     */
+    bool dequeueProcess(Models::Process *outProcess = nullptr, QString *outError = nullptr);
+
+    /**
+     * @brief Synchronizes the in-memory ready queue from persistent MySQL storage.
+     * Loads all processes with process_state = 'Ready' ordered by queue_id ASC (FIFO).
+     */
+    bool syncReadyQueueFromDatabase(QString *outError = nullptr);
 
 signals:
     /**

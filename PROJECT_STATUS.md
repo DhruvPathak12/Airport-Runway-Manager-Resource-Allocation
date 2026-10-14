@@ -596,10 +596,101 @@ All 5 CTest suites pass 100%:
 
 ---
 
+## DAY 10 — Process States and Ready Queue Lifecycle ✅ COMPLETE
+
+### Files Created/Modified
+- `src/models/Process.h` (updated — state transitions `canTransitionTo()`, `transitionTo()`, convenience constructors and accessors, database state mapping)
+- `src/models/Process.cpp` (updated — state transition validation logic, state string mappings)
+- `src/scheduler/ReadyQueue.h` (NEW — modular ready queue managing in-memory processes in strict FIFO order, duplicate prevention, lookup/removal helpers, state consistency enforcement)
+- `src/scheduler/ReadyQueue.cpp` (NEW — implementations for enqueue, dequeue, removeByFlightId, removeByQueueId, transitionProcessState)
+- `src/scheduler/Scheduler.h` (updated — owns `SchedulerComponents::ReadyQueue` instance, accessor methods)
+- `src/scheduler/Scheduler.cpp` (updated — scheduler ready queue integration)
+- `src/services/ApplicationService.h` (updated — process state update, in-memory ready queue access, enqueue/dequeue helpers, syncReadyQueueFromDatabase)
+- `src/services/ApplicationService.cpp` (updated — `updateProcessState` with RBAC + DB persistence + queue sync, `syncReadyQueueFromDatabase`, deletion cleanup)
+- `CMakeLists.txt` (updated — added ReadyQueue sources to APP_SOURCES and all test targets, registered `TestReadyQueueAndProcessStates`)
+- `tests/TestReadyQueueAndProcessStates.cpp` (NEW — 24 comprehensive unit and integration tests)
+
+### Process Lifecycle and Validated Transitions
+Supported state transitions:
+- `New -> Ready`: flight accepted into the in-memory ready queue.
+- `Ready -> Running`: process dispatched for runway execution (Day 11/14).
+- `Running -> Completed`: process finished simulated runway execution.
+- `Running -> Blocked`: process blocked on runway availability or holding.
+- `Blocked -> Ready`: process unblocked and returned to ready state.
+
+Explicitly rejected invalid transitions:
+- `New -> Running` (cannot bypass ready queue)
+- `New -> Blocked` or `New -> Completed`
+- `Ready -> Blocked` or `Ready -> Completed` (must be running first)
+- `Blocked -> Running` or `Blocked -> Completed` (must return to ready first)
+- `Completed -> *` (terminal state: no further transitions permitted)
+- `State -> State` (same-state transition rejected as redundant)
+
+All rejected transitions leave the original process state completely unaltered without side effects.
+
+### ReadyQueue Architecture & Identity Rules
+- **Component**: `SchedulerComponents::ReadyQueue` under `src/scheduler/`.
+- **Identity Distinction**: `flightId` is the unique simulated PID; `queueId` / `id` is the primary key in `scheduling_queue`. Lookups and removals are supported on both.
+- **Ordering**: Strict FIFO insertion order using `QList<Models::Process>` (`takeFirst()`).
+- **NO Sorting**: No priority-based sorting, effective priority sorting, or shortest-job-first ordering in this milestone (deferred to Day 11).
+- **Duplicate Prevention**: `enqueue()` rejects duplicates on `flightId` or `queueId` before insertion.
+- **State Consistency**: Only processes in `ProcessState::Ready` may enter `ReadyQueue`. When a process transitions out of `Ready` via `transitionProcessState()` or `ApplicationService::updateProcessState()`, it is atomically removed from `ReadyQueue` so no stale entries remain.
+
+### Database Layer Compatibility
+- In-memory `ProcessState::New` maps to MySQL ENUM `'Ready'` via `Process::stateToDbString()` to preserve strict compatibility with MySQL `scheduling_queue.process_state ENUM('Ready','Running','Completed','Blocked')`.
+- All SQL updates are executed via parameterized queries with bound variables.
+- The 8-table relational database schema remains intact with zero schema modifications.
+
+### Automated Test Results (24 / 24 Passed in TestReadyQueueAndProcessStates; 6 / 6 Test Suites Passed 100%)
+1. `TestReadyQueueAndProcessStates::initTestCase` — PASS
+2. `TestReadyQueueAndProcessStates::testValidStateInitialization` — PASS
+3. `TestReadyQueueAndProcessStates::testSupportedValidTransitions` — PASS
+4. `TestReadyQueueAndProcessStates::testRejectionOfInvalidTransitions` — PASS
+5. `TestReadyQueueAndProcessStates::testOriginalStateUnchangedAfterRejectedTransition` — PASS
+6. `TestReadyQueueAndProcessStates::testCppStateToDbStringMapping` — PASS
+7. `TestReadyQueueAndProcessStates::testDbStringToCppStateMappingAndInvalidHandling` — PASS
+8. `TestReadyQueueAndProcessStates::testAddValidReadyProcess` — PASS
+9. `TestReadyQueueAndProcessStates::testFifoInsertionOrderPreserved` — PASS
+10. `TestReadyQueueAndProcessStates::testFindingProcessByIdentifiers` — PASS
+11. `TestReadyQueueAndProcessStates::testRemovingProcessSuccessfully` — PASS
+12. `TestReadyQueueAndProcessStates::testRemovingNonexistentProcess` — PASS
+13. `TestReadyQueueAndProcessStates::testRejectingDuplicateInsertion` — PASS
+14. `TestReadyQueueAndProcessStates::testRejectingInvalidProcessData` — PASS
+15. `TestReadyQueueAndProcessStates::testRejectingNonReadyStateInsertion` — PASS
+16. `TestReadyQueueAndProcessStates::testQueueSizeAndEmptyBehavior` — PASS
+17. `TestReadyQueueAndProcessStates::testQueueMembershipAfterRemoval` — PASS
+18. `TestReadyQueueAndProcessStates::testProcessTransitionOutOfReadyRemovesFromQueue` — PASS
+19. `TestReadyQueueAndProcessStates::testNoQueueSortingByPriorityOrServiceTime` — PASS
+20. `TestReadyQueueAndProcessStates::testServiceUpdateProcessStateRBAC` — PASS
+21. `TestReadyQueueAndProcessStates::testServiceEnqueueAndDequeueIntegration` — PASS
+22. `TestReadyQueueAndProcessStates::testServiceSyncReadyQueueFromDatabase` — PASS
+23. `TestReadyQueueAndProcessStates::testServiceFlightDeletionRemovesFromReadyQueue` — PASS
+24. `TestReadyQueueAndProcessStates::cleanupTestCase` — PASS
+
+All 6 CTest suites pass 100%:
+- `TestDatabaseConnectivity`: Passed
+- `TestAuthAndRBAC`: Passed
+- `TestFlightManagement`: Passed
+- `TestAircraftManagement`: Passed
+- `TestProcessModel`: Passed
+- `TestReadyQueueAndProcessStates`: Passed (24/24 tests passed)
+
+### Scope Boundaries Confirmed (What was NOT implemented)
+- No non-preemptive priority scheduling or queue sorting (Day 11).
+- No automatic dispatching or execution loop (Day 11).
+- No waiting time, turnaround time, or completion time calculation (Day 12).
+- No dynamic aging engine or starvation prevention (Days 17–18).
+- No emergency priority overrides (Day 16).
+- No runway mutexes, synchronization primitives, or threads (Days 14–20).
+- No ninth database table or schema alteration.
+
+---
+
 ## CURRENT MILESTONE
-Day 9 — COMPLETE
+Day 10 — COMPLETE
 
 ## NEXT MILESTONE
-Day 10 — Process States + Ready Queue Lifecycle
+Day 11 — Non-Preemptive Priority Scheduling Algorithm
+
 
 

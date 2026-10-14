@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QList>
 #include "models/Flight.h"
+#include "models/Process.h"
+#include "scheduler/ReadyQueue.h"
 
 /**
  * @brief Foundation for the Priority Scheduler.
@@ -62,10 +64,15 @@ public:
     void runScheduler();
 
     /**
-     * @brief Returns a snapshot of the current scheduling queue (in-memory).
-     * Implementation: Day 11.
+     * @brief Returns a reference to the in-memory ready queue.
      */
-    QList<Models::Flight> readyQueue() const;
+    SchedulerComponents::ReadyQueue& readyQueue() { return m_readyQueue; }
+    const SchedulerComponents::ReadyQueue& readyQueue() const { return m_readyQueue; }
+
+    /**
+     * @brief Returns all processes currently in the ready queue.
+     */
+    QList<Models::Process> readyQueueProcesses() const { return m_readyQueue.allProcesses(); }
 
 signals:
     /**
@@ -80,6 +87,5 @@ signals:
     void schedulerError(const QString &message);
 
 private:
-    // Populated Day 11 — in-memory snapshot of the ready queue
-    QList<Models::Flight> m_readyQueue;
+    SchedulerComponents::ReadyQueue m_readyQueue;
 };

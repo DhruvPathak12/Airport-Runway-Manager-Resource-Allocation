@@ -7,6 +7,18 @@ Process::Process()
 {
 }
 
+Process::Process(int qid, int fid, int priority, int burstSec, ProcessState st)
+    : id(qid)
+    , queueId(qid)
+    , flightId(fid)
+    , arrivalTime(QDateTime::currentDateTime())
+    , basePriority(priority)
+    , effectivePriority(priority)
+    , serviceTime(burstSec)
+    , state(st)
+{
+}
+
 bool Process::validate(QString *outError) const
 {
     if (flightId <= 0) {
@@ -49,6 +61,64 @@ bool Process::validate(QString *outError) const
         return false;
     }
 
+    return true;
+}
+
+bool Process::canTransitionTo(ProcessState targetState, QString *outReason) const
+{
+    if (state == targetState) {
+        if (outReason) {
+            *outReason = QStringLiteral("Cannot transition to the same state ('%1').")
+                             .arg(stateToString(state));
+        }
+        return false;
+    }
+
+    switch (state) {
+    case ProcessState::New:
+        if (targetState == ProcessState::Ready) {
+            return true;
+        }
+        break;
+
+    case ProcessState::Ready:
+        if (targetState == ProcessState::Running) {
+            return true;
+        }
+        break;
+
+    case ProcessState::Running:
+        if (targetState == ProcessState::Completed || targetState == ProcessState::Blocked) {
+            return true;
+        }
+        break;
+
+    case ProcessState::Blocked:
+        if (targetState == ProcessState::Ready) {
+            return true;
+        }
+        break;
+
+    case ProcessState::Completed:
+        // Terminal state: no transitions permitted
+        break;
+    }
+
+    if (outReason) {
+        *outReason = QStringLiteral("Invalid state transition from '%1' to '%2'.")
+                         .arg(stateToString(state))
+                         .arg(stateToString(targetState));
+    }
+    return false;
+}
+
+bool Process::transitionTo(ProcessState targetState, QString *outError)
+{
+    if (!canTransitionTo(targetState, outError)) {
+        return false;
+    }
+
+    state = targetState;
     return true;
 }
 
