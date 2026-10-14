@@ -2,20 +2,19 @@
 
 QString PasswordUtils::hash(const QString &plaintext)
 {
-    // TODO (Day 6): Implement.
-    // Implementation:
-    //   QByteArray bytes = plaintext.toUtf8();
-    //   QByteArray hashed = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
-    //   return QString(hashed.toHex());
-    Q_UNUSED(plaintext)
-    return QString();
+    if (plaintext.isEmpty()) {
+        return QString();
+    }
+    const QByteArray bytes = plaintext.toUtf8();
+    const QByteArray digest = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+    return QString::fromLatin1(digest.toHex());
 }
 
 bool PasswordUtils::verify(const QString &plaintext, const QString &storedHash)
 {
-    // TODO (Day 6): Implement.
-    // return hash(plaintext) == storedHash;
-    Q_UNUSED(plaintext)
-    Q_UNUSED(storedHash)
-    return false;
+    if (plaintext.isEmpty() || storedHash.isEmpty()) {
+        return false;
+    }
+    const QString calculated = hash(plaintext);
+    return calculated.compare(storedHash, Qt::CaseInsensitive) == 0;
 }

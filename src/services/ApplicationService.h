@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QString>
 
+#include "models/Session.h"
+
 class Scheduler;
 class ResourceManager;
 
@@ -57,6 +59,35 @@ public:
      */
     bool checkDatabaseConnection();
 
+    /**
+     * @brief Authenticates a user against the database.
+     * @param username  Supplied username.
+     * @param password  Supplied plaintext password (verified then discarded).
+     * @param outError  Optional output receiving a sanitized error message on failure.
+     * @return true if credentials and status are valid and a session was created.
+     */
+    bool login(const QString &username, const QString &password, QString *outError = nullptr);
+
+    /**
+     * @brief Logs out the currently authenticated user and clears the session.
+     */
+    void logout();
+
+    /**
+     * @brief Returns the active authenticated session.
+     */
+    const Session& currentSession() const { return m_session; }
+
+    /**
+     * @brief Returns true if an authenticated session currently exists.
+     */
+    bool isAuthenticated() const { return m_session.isValid(); }
+
+    /**
+     * @brief Injects an authenticated session for unit testing without live MySQL.
+     */
+    void setTestSession(const Session &session) { m_session = session; }
+
     // ── Sub-service accessors ─────────────────────────────────────────────────
     Scheduler       *scheduler()       const { return m_scheduler; }
     ResourceManager *resourceManager() const { return m_resourceManager; }
@@ -68,6 +99,16 @@ signals:
     void applicationReady();
 
     /**
+     * @brief Emitted when a user successfully authenticates.
+     */
+    void userLoggedIn(const Session &session);
+
+    /**
+     * @brief Emitted when a user logs out.
+     */
+    void userLoggedOut();
+
+    /**
      * @brief Emitted when a fatal error occurs during initialization.
      */
     void initializationFailed(const QString &reason);
@@ -75,5 +116,6 @@ signals:
 private:
     Scheduler       *m_scheduler       = nullptr;
     ResourceManager *m_resourceManager = nullptr;
+    Session          m_session;
 };
 

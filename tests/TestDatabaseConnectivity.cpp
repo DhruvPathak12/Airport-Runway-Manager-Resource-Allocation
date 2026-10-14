@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QTextStream>
 #include <QSqlDatabase>
+#include <QSqlQuery>
 
 #include "database/DatabaseManager.h"
 
@@ -34,6 +35,9 @@ private slots:
     void testNoDuplicateNamedConnectionLeaks();
     void testSafeDisconnectBehavior();
     void testReadOnlyQueryWhenDisconnected();
+
+    // Live MySQL connectivity and SELECT 1 tests
+    void testLiveDatabaseConnectionAndSelectOne();
 };
 
 void TestDatabaseConnectivity::initTestCase()
@@ -249,6 +253,46 @@ void TestDatabaseConnectivity::testReadOnlyQueryWhenDisconnected()
     bool success = db.testConnectivity(&version, &database);
     QCOMPARE(success, false);
     QCOMPARE(db.lastError(), QStringLiteral("Not connected to database."));
+}
+
+void TestDatabaseConnectivity::testLiveDatabaseConnectionAndSelectOne()
+{
+    DatabaseManager &db = DatabaseManager::instance();
+    QString defaultCfg = DatabaseManager::defaultConfigFile();
+
+    if (!QFile::exists(defaultCfg)) {
+        QSKIP("Local db.conf is not configured on this machine; skipping live MySQL test.");
+    }
+
+    bool loaded = db.loadConfig(defaultCfg);
+    QVERIFY(loaded);
+
+    bool connected = db.connect();
+    if (!connected) {
+        QSKIP(qPrintable(QStringLiteral("Could not connect to live MySQL with db.conf (%1); skipping live query test.")
+                             .arg(db.lastError())));
+    }
+
+    QVERIFY(db.isConnected());
+    QCOMPARE(db.connectionState(), DatabaseManager::ConnectionState::Connected);
+
+    // Verify SELECT 1 returns 1 within local scope to free handle before disconnect
+    {
+        QSqlDatabase sqlDb = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+        QSqlQuery query(sqlDb);
+        QVERIFY(query.exec(QStringLiteral("SELECT 1;")));
+        QVERIFY(query.next());
+        QCOMPARE(query.value(0).toInt(), 1);
+    }
+
+    // Verify active database matches expected database
+    QString version, currentDb;
+    QVERIFY(db.testConnectivity(&version, &currentDb));
+    QVERIFY(!version.isEmpty());
+    QCOMPARE(currentDb.toLower(), QStringLiteral("smartatc"));
+
+    db.disconnect();
+    QCOMPARE(db.isConnected(), false);
 }
 
 QTEST_MAIN(TestDatabaseConnectivity)

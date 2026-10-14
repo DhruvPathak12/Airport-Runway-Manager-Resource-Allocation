@@ -6,30 +6,11 @@
 #include <QLabel>
 
 class ApplicationService;
+class LoginView;
+class QPushButton;
 
 /**
- * @brief The main application window with navigation sidebar + content area.
- *
- * Structure:
- *
- *  ┌──────────────────────────────────────────────────────────────────────┐
- *  │ Smart Air Traffic Control Management System                    [− □ ×]│
- *  ├──────────────────┬───────────────────────────────────────────────────┤
- *  │  Navigation      │                                                   │
- *  │  ─────────────   │            Content Area (QStackedWidget)          │
- *  │  Dashboard       │                                                   │
- *  │  Flights         │   (Placeholder pages — populated Day 6–14)        │
- *  │  Aircraft        │                                                   │
- *  │  Runways         │                                                   │
- *  │  Scheduling      │                                                   │
- *  │  Transactions    │                                                   │
- *  │  Logs            │                                                   │
- *  │  Users           │                                                   │
- *  │                  │                                                   │
- *  └──────────────────┴───────────────────────────────────────────────────┘
- *
- * Today (Day 2): Navigation + placeholder pages only.
- * Functional modules added per-day starting Day 6.
+ * @brief The main application window with authentication flow and RBAC navigation.
  */
 class MainWindow : public QMainWindow
 {
@@ -41,17 +22,30 @@ public:
 
 private slots:
     void onNavItemChanged(int row);
+    void onUserLoggedIn();
+    void onUserLoggedOut();
+    void onLogoutClicked();
 
 private:
     void setupUi();
     void setupNavigation();
     void setupPages();
+    void applyRolePermissions();
     QWidget* makePlaceholderPage(const QString &title, const QString &description);
 
+    void updateDatabaseStatus();
+
     // ── UI components ─────────────────────────────────────────────────────────
-    QListWidget    *m_navList      = nullptr;
-    QStackedWidget *m_pageStack    = nullptr;
+    QStackedWidget *m_mainStack     = nullptr; // 0: LoginView, 1: Main shell
+    LoginView      *m_loginView     = nullptr;
+    QWidget        *m_appShell      = nullptr;
+
+    QListWidget    *m_navList       = nullptr;
+    QStackedWidget *m_pageStack     = nullptr;
+    QLabel         *m_dbStatusLabel = nullptr;
+    QLabel         *m_userInfoLabel = nullptr;
+    QPushButton    *m_logoutButton  = nullptr;
 
     // ── Application service reference ─────────────────────────────────────────
-    ApplicationService *m_service  = nullptr;
+    ApplicationService *m_service   = nullptr;
 };

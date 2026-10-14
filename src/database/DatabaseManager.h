@@ -75,6 +75,29 @@ public:
     bool testConnectivity(QString *outVersion = nullptr, QString *outDatabase = nullptr);
 
     /**
+     * @brief Detailed connection status enumeration.
+     */
+    enum class ConnectionState {
+        NotConfigured,
+        DriverUnavailable,
+        ServerUnreachable,
+        AuthFailed,
+        DatabaseNotFound,
+        Connected,
+        Disconnected
+    };
+
+    /**
+     * @brief Returns the current connection state.
+     */
+    ConnectionState connectionState() const;
+
+    /**
+     * @brief Returns a user-facing descriptive summary of the connection state.
+     */
+    QString statusDescription() const;
+
+    /**
      * @brief Returns configured database parameters (excluding password).
      */
     QString host() const;
@@ -100,6 +123,7 @@ private:
     // Internal state
     QMap<QString, QString> m_config;
     bool                   m_connected = false;
+    ConnectionState        m_state     = ConnectionState::NotConfigured;
     QString                m_lastError;
     QString                m_configFilePath;
 };

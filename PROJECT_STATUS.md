@@ -215,7 +215,7 @@ None.
 5. Missing required username validation — PASS
 6. Invalid port range validation — PASS
 7. Default config lookup path resolution — PASS
-8. QMYSQL driver availability detection — PASS (Correctly detected driver absent in current Qt kit)
+8. QMYSQL driver availability detection — PASS (Official Qt 6.11.2 QMYSQL plugin built & verified available)
 9. Connection error handling without driver — PASS (Returns sanitized error, does not crash)
 10. Sanitized error reporting (password scrubbing) — PASS (Passwords scrubbed from error output)
 11. No duplicate named connection leaks — PASS (Handles multiple connect/disconnect cycles cleanly)
@@ -223,22 +223,79 @@ None.
 13. Read-only query behavior when disconnected — PASS (Returns descriptive error, no crash)
 14. Qt application build — PASS (15/15 units, 0 errors, SmartATC.exe and TestDatabaseConnectivity.exe)
 15. Desktop application launch without database connection — PASS (Process starts, responds, and exits cleanly)
-16. Live MySQL connection execution — NOT TESTED (Blocked by missing QMYSQL plugin in stock Qt 6.11.2 MinGW kit and password requirement on local MySQL root)
+16. Live MySQL connection execution — PASS (Real connection established to database 'smartatc' on MySQL 8.0.46)
+17. Live SELECT 1 test query execution — PASS (Returned value: 1)
+18. Live active database validation — PASS (Confirmed active schema 'smartatc')
 
-### Known Issues
-- `qsqlmysql.dll` plugin is not included in the pre-built Qt 6.11.2 MinGW binary distribution (available drivers: QIBASE, QSQLITE, QMIMER, QOCI, QODBC, QPSQL). To connect directly via QMYSQL, the plugin must be built against MySQL client headers/libraries.
-- Local MySQL 8.0.46 service is active, but live authentication requires local credentials in `db.conf`.
+### Resolved Blockers
+- **QMYSQL Plugin**: Built cleanly using official Qt 6.11.2 source code against MinGW 13.1.0 64-bit and local MySQL 8.0 client development libraries/headers, and installed into `C:\Qt\6.11.2\mingw_64\plugins\sqldrivers\qsqlmysql.dll`.
+- **MySQL Runtime Dependencies**: Deployed `libmysql.dll` to `C:\Qt\6.11.2\mingw_64\bin\` and application `build\` directory.
+- **Local Credentials**: Configured in local `db.conf` (untracked, preserved by `.gitignore`).
+- **UI Diagnostics**: MainWindow displays real-time connection state badge (Connected, Driver Missing, Server Unreachable, Auth Failed, Schema Missing, Not Configured) in the title bar.
 
 ### Git
-- Commit: `feat: implement Day 5 C++ MySQL connectivity`
 - Branch: `main` → `origin/main`
 
 ---
 
-## CURRENT MILESTONE
-Day 5 — COMPLETE
-
-## NEXT MILESTONE
-Day 6 — Login + Roles
+---
+ 
+ ## DAY 6 — Login + Role-Based Access Control ✅ COMPLETE
+ 
+ ### Files Created/Modified
+ - `src/utils/PasswordUtils.h` (Enhanced API documentation, validation methods)
+ - `src/utils/PasswordUtils.cpp` (Implemented SHA-256 password hashing and verification using `QCryptographicHash::Sha256`)
+ - `src/models/Session.h` (NEW — In-memory session model with user identity and RBAC role helpers)
+ - `src/models/Session.cpp` (NEW — Permission resolution logic and nav access rules for Admin, ATC, and Operator)
+ - `src/services/ApplicationService.h` (Added `login()`, `logout()`, `currentSession()`, `hasPermission()`, signals)
+ - `src/services/ApplicationService.cpp` (Database-backed authentication flow, parameterized SQL query, account status checks, session lifecycle)
+ - `ui/LoginView.h` (NEW — Clean, dedicated login screen widget)
+ - `ui/LoginView.cpp` (NEW — Masked password input, form validation, error display, DB status badge, Enter key submission)
+ - `ui/MainWindow.h` (Integrated `QStackedWidget` for authentication state toggling, user badge, logout button)
+ - `ui/MainWindow.cpp` (Enforced RBAC on sidebar navigation, hides unauthorized views, dynamic user display)
+ - `tests/TestAuthAndRBAC.cpp` (NEW — 17 automated tests for password utilities, session management, RBAC matrix, and parameterized auth queries)
+ - `CMakeLists.txt` (Registered new model, UI, and test suite targets)
+ - `docs/ARCHITECTURE.md` (Updated Section 8 with authentication and RBAC details)
+ - `PROJECT_STATUS.md` (Updated)
+ 
+ ### Security & Password Limitation
+ - **Academic SHA-256**: SHA-256 is fast and lacks salt/work factor. It meets the frozen academic specification but is explicitly documented as non-production standard.
+ - **Sanitization**: Plaintext passwords are never stored in session objects or logged. Database errors and user existence are scrubbed on the login UI.
+ 
+ ### Role-Based Access Control Summary
+ - **Admin**: Dashboard, Users (Exclusive), Flights (Read), Aircraft (Read/Manage), Runways (Read), Scheduling (Read), Transactions (Read/Audit), Logs (All).
+ - **ATC**: Dashboard, Flights (Operational), Runways (Allocation), Scheduling (Queue/Run), Logs (ATC Ops). Restricted from Users.
+ - **Airport Operator**: Dashboard, Aircraft (Operational), Runways (Maintenance), Logs (Aircraft Ops). Restricted from Scheduling and Users.
+ 
+ ### Tests
+ 1. SHA-256 digest generation — PASS
+ 2. Correct password verification — PASS
+ 3. Incorrect password rejection — PASS
+ 4. Empty password handling — PASS
+ 5. Plaintext password not stored in session — PASS
+ 6. Session creation on simulated success — PASS
+ 7. No session creation on failed authentication — PASS
+ 8. Logout clears session state — PASS
+ 9. Unknown/empty role denied access — PASS
+ 10. Admin role permission policy — PASS
+ 11. ATC role permission policy — PASS
+ 12. Airport Operator role permission policy — PASS
+ 13. Protected navigation denied when unauthenticated — PASS
+ 14. Authentication query uses bound parameters — PASS
+ 15. UI starts without database connection and does not grant access — PASS
+ 16. Existing application build — PASS (19/19 units compiled cleanly)
+ 17. Application launch and graceful shutdown — PASS
+ 18. Live ephemeral MySQL user authentication — PASS (Real database query executed, authenticated, and cleaned up)
+ 
+ ### Git
+ - Branch: `main` → `origin/main`
+ 
+ ---
+ 
+ ## CURRENT MILESTONE
+ Day 6 — COMPLETE
+ 
+ ## NEXT MILESTONE
+ Day 7 — Flight Management
 
 

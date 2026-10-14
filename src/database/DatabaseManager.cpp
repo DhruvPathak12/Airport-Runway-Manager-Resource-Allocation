@@ -161,6 +161,7 @@ bool DatabaseManager::connect()
     if (m_config.isEmpty() || !m_config.contains(QStringLiteral("host"))) {
         // Attempt loading default config if not yet loaded
         if (!loadConfig()) {
+            m_state = ConnectionState::NotConfigured;
             setSanitizedError(QStringLiteral("Cannot connect: configuration is missing or invalid."));
             return false;
         }
@@ -168,6 +169,7 @@ bool DatabaseManager::connect()
 
     // 2. Check QMYSQL driver availability
     if (!isDriverAvailable()) {
+        m_state = ConnectionState::DriverUnavailable;
         setSanitizedError(QStringLiteral("Qt SQL 'QMYSQL' driver plugin is not available in current Qt environment."));
         qCritical() << "[DatabaseManager]" << m_lastError;
         return false;
@@ -189,13 +191,28 @@ bool DatabaseManager::connect()
 
     // 4. Attempt opening connection
     if (!db.open()) {
-        setSanitizedError(db.lastError().text());
+        QString errText = db.lastError().text();
+        setSanitizedError(errText);
+
+        // Distinguish specific failure modes
+        if (errText.contains(QStringLiteral("Access denied"), Qt::CaseInsensitive)) {
+            m_state = ConnectionState::AuthFailed;
+        } else if (errText.contains(QStringLiteral("Unknown database"), Qt::CaseInsensitive)) {
+            m_state = ConnectionState::DatabaseNotFound;
+        } else if (errText.contains(QStringLiteral("Can't connect"), Qt::CaseInsensitive) ||
+                   errText.contains(QStringLiteral("Communications link failure"), Qt::CaseInsensitive)) {
+            m_state = ConnectionState::ServerUnreachable;
+        } else {
+            m_state = ConnectionState::Disconnected;
+        }
+
         qWarning() << "[DatabaseManager] Failed to connect to MySQL database:" << m_lastError;
         m_connected = false;
         return false;
     }
 
     m_connected = true;
+    m_state = ConnectionState::Connected;
     m_lastError.clear();
     qInfo() << "[DatabaseManager] Connected successfully to MySQL database"
             << db.databaseName() << "on" << db.hostName();
@@ -215,7 +232,35 @@ void DatabaseManager::disconnect()
         QSqlDatabase::removeDatabase(CONNECTION_NAME);
     }
     m_connected = false;
+    m_state = ConnectionState::Disconnected;
     qInfo() << "[DatabaseManager] Database connection closed.";
+}
+
+DatabaseManager::ConnectionState DatabaseManager::connectionState() const
+{
+    return m_state;
+}
+
+QString DatabaseManager::statusDescription() const
+{
+    switch (m_state) {
+    case ConnectionState::Connected:
+        return QStringLiteral("Connected (Database: %1, Host: %2:%3)")
+            .arg(databaseName(), host(), QString::number(port()));
+    case ConnectionState::NotConfigured:
+        return QStringLiteral("Configuration missing (db.conf not found or incomplete)");
+    case ConnectionState::DriverUnavailable:
+        return QStringLiteral("QMYSQL driver plugin unavailable");
+    case ConnectionState::ServerUnreachable:
+        return QStringLiteral("MySQL server unreachable on %1:%2").arg(host(), QString::number(port()));
+    case ConnectionState::AuthFailed:
+        return QStringLiteral("Authentication failed for user '%1'").arg(username());
+    case ConnectionState::DatabaseNotFound:
+        return QStringLiteral("Database '%1' not found on server").arg(databaseName());
+    case ConnectionState::Disconnected:
+    default:
+        return QStringLiteral("Disconnected");
+    }
 }
 
 bool DatabaseManager::isConnected() const

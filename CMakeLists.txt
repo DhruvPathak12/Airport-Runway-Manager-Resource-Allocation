@@ -28,6 +28,8 @@ set(APP_SOURCES
     # UI layer (ui/)
     ui/MainWindow.h
     ui/MainWindow.cpp
+    ui/LoginView.h
+    ui/LoginView.cpp
 
     # Service layer (src/services/)
     src/services/ApplicationService.h
@@ -49,11 +51,13 @@ set(APP_SOURCES
     src/utils/PasswordUtils.h
     src/utils/PasswordUtils.cpp
 
-    # Models (src/models/) — header-only structs, included via target_include_directories
+    # Models (src/models/)
     src/models/Flight.h
     src/models/Aircraft.h
     src/models/Runway.h
     src/models/User.h
+    src/models/Session.h
+    src/models/Session.cpp
 )
 
 add_executable(SmartATC ${APP_SOURCES})
@@ -98,4 +102,36 @@ target_include_directories(TestDatabaseConnectivity
 )
 
 add_test(NAME TestDatabaseConnectivity COMMAND TestDatabaseConnectivity)
+
+add_executable(TestAuthAndRBAC
+    tests/TestAuthAndRBAC.cpp
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cpp
+    src/models/Session.h
+    src/models/Session.cpp
+    src/services/ApplicationService.h
+    src/services/ApplicationService.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/scheduler/Scheduler.h
+    src/scheduler/Scheduler.cpp
+    src/resource/ResourceManager.h
+    src/resource/ResourceManager.cpp
+)
+
+target_link_libraries(TestAuthAndRBAC
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestAuthAndRBAC
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestAuthAndRBAC COMMAND TestAuthAndRBAC)
+
 

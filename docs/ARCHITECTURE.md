@@ -176,12 +176,50 @@ Plain C++17 structs — no Qt base class, no database logic embedded.
 
 ---
 
-## 8. Security
+## 8. Security & Authentication (Day 6)
 
-- Passwords stored as SHA-256 hex hash ONLY.
-- Implemented via `PasswordUtils::hash()` using `QCryptographicHash::Sha256`.
-- No OpenSSL dependency.
-- `db.conf` is gitignored — credentials never committed.
+### Password Hashing
+- Stored as SHA-256 hex digest ONLY via `PasswordUtils::hash()`.
+- Implemented with built-in Qt `QCryptographicHash::Sha256` with zero external dependencies (no OpenSSL).
+- Plaintext passwords and digests are never retained in session state, logged, or displayed in error messages.
+- **Academic Limitation**: SHA-256 alone is a fast cryptographic digest without salt or configurable work factor (unlike bcrypt, Argon2, or PBKDF2). This is a frozen academic requirement and must not be represented as production-grade authentication.
+
+### Authentication Flow (`ApplicationService::login`)
+1. Validates non-empty username and password.
+2. Checks database availability via `DatabaseManager`.
+3. Executes parameterized query joining `users` and `roles`:
+   ```sql
+   SELECT u.user_id, u.username, u.password_hash, u.full_name, u.status, r.role_name
+   FROM users u
+   JOIN roles r ON u.role_id = r.role_id
+   WHERE u.username = :username
+   ```
+4. Verifies account status (`Active`). Inactive or unknown accounts are rejected.
+5. Verifies submitted password hash via `PasswordUtils::verify()`.
+6. Generates generic "Invalid username or password" on failure to avoid leaking user existence.
+7. On success, instantiates an in-memory `Session` object holding `userId`, `username`, `fullName`, and `roleName`.
+8. Emits `loginSuccessful(Session)` and notifies UI to switch view stack.
+
+### In-Memory Session Management (`Session`)
+- Exists strictly in volatile process memory while authenticated.
+- Never written to disk, config files, or cookies.
+- Cleared completely upon `logout()` or application termination.
+- Exposes role checkers (`isAdmin()`, `isATC()`, `isOperator()`) and centralized permission queries (`hasPermission(key)`).
+
+### Role-Based Access Control (RBAC) Matrix
+| Permission Key / Page | Admin | ATC | Airport Operator |
+|---|:---:|:---:|:---:|
+| `Dashboard` | ✅ | ✅ | ✅ |
+| `Flights` | View Only | View & Operational Controls | View Only |
+| `Aircraft` | View & Manage | View Only | View & Operational Controls |
+| `Runways` | View Only | Operational Allocation | Maintenance Controls |
+| `Scheduling` | View & Queue | Operational & Run Queue | Denied |
+| `Transactions` | View & Audit | View Transactions | Denied |
+| `Logs` | View All | ATC Operations | Aircraft/Maintenance |
+| `Users` | Manage & Assign | Denied | Denied |
+
+- UI navigation dynamically hides and disables unauthorized items based on `Session::allowedNavItems()`.
+- Service/Business methods perform backend permission checks prior to executing protected operations.
 
 ---
 
