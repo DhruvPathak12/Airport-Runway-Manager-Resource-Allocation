@@ -105,6 +105,29 @@ struct Process {
     bool hasTurnaroundTime() const { return turnaroundTime >= 0; }
     bool hasCompletionTime() const { return completionTime.isValid(); }
 
+    // ── Metric Calculation (Day 12) ──────────────────────────────────────────
+    /**
+     * @brief Computes Completion Time, Turnaround Time, and Waiting Time for a completed process.
+     * Formulas:
+     *   - CT = startTime + serviceTime (or provided completion timestamp)
+     *   - TAT = CT - AT (in seconds)
+     *   - WT = TAT - BT (in seconds, equivalent to startTime - AT)
+     *
+     * @param completedAt Exact completion timestamp. Must be >= arrivalTime.
+     * @param outError    Optional output string receiving failure explanation.
+     * @return true if metrics were computed and validated successfully.
+     */
+    bool calculateMetrics(const QDateTime &completedAt, QString *outError = nullptr);
+
+    /**
+     * @brief Computes Completion Time, Turnaround Time, and Waiting Time given execution start timestamp.
+     *
+     * @param startedAt Execution start timestamp. Must be >= arrivalTime.
+     * @param outError  Optional output string receiving failure explanation.
+     * @return true if metrics were computed and validated successfully.
+     */
+    bool calculateMetricsFromStart(const QDateTime &startedAt, QString *outError = nullptr);
+
     // ── Validation ───────────────────────────────────────────────────────────
     /**
      * @brief Validates PCB fields against schema constraints and OS simulation rules.

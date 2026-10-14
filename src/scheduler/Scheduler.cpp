@@ -158,8 +158,140 @@ void Scheduler::clearRunningProcess()
     m_hasRunningProcess = false;
 }
 
+Scheduler::CompletionResult Scheduler::completeRunningProcess(const QDateTime &completedAt)
+{
+    CompletionResult res;
+    if (!m_hasRunningProcess) {
+        res.success = false;
+        res.reason = QStringLiteral("No process is currently RUNNING to complete.");
+        emit schedulerError(res.reason);
+        return res;
+    }
+
+    res = completeProcess(m_runningProcess, completedAt);
+    if (res.success) {
+        clearRunningProcess();
+    }
+    return res;
+}
+
+Scheduler::CompletionResult Scheduler::completeProcess(Models::Process process, const QDateTime &completedAt)
+{
+    CompletionResult res;
+
+    // 1. Prevent duplicate completion records
+    for (const auto &cp : m_completedProcesses) {
+        if (cp.flightId == process.flightId) {
+            res.success = false;
+            res.reason = QStringLiteral("Process for flight %1 has already been completed.").arg(process.flightId);
+            emit schedulerError(res.reason);
+            return res;
+        }
+    }
+
+    // 2. Validate state transition to Completed
+    QString transReason;
+    if (!process.canTransitionTo(Models::ProcessState::Completed, &transReason)) {
+        res.success = false;
+        res.reason = QStringLiteral("Cannot complete process %1: %2").arg(process.flightId).arg(transReason);
+        emit schedulerError(res.reason);
+        return res;
+    }
+
+    // 3. Determine completion timestamp: if invalid, default to arrivalTime + serviceTime
+    QDateTime compTime = completedAt.isValid() ? completedAt : process.arrivalTime.addSecs(process.serviceTime);
+
+    // 4. Calculate metrics (CT, TAT, WT)
+    QString metricErr;
+    if (!process.calculateMetrics(compTime, &metricErr)) {
+        res.success = false;
+        res.reason = QStringLiteral("Failed to calculate metrics for process %1: %2").arg(process.flightId).arg(metricErr);
+        emit schedulerError(res.reason);
+        return res;
+    }
+
+    // 5. Apply transition to Completed
+    process.transitionTo(Models::ProcessState::Completed);
+
+    // 6. Record in completed processes
+    m_completedProcesses.append(process);
+
+    res.success = true;
+    res.process = process;
+    res.reason = QStringLiteral("Successfully completed flight %1 (CT=%2, TAT=%3s, WT=%4s).")
+                     .arg(process.flightId)
+                     .arg(process.completionTime.toString(Qt::ISODate))
+                     .arg(process.turnaroundTime)
+                     .arg(process.waitingTime);
+
+    emit processCompleted(process);
+    return res;
+}
+
+bool Scheduler::blockRunningProcess(Models::Process *outBlocked, QString *outReason)
+{
+    if (!m_hasRunningProcess) {
+        if (outReason) *outReason = QStringLiteral("No process is currently RUNNING to block.");
+        return false;
+    }
+
+    QString transReason;
+    if (!m_runningProcess.canTransitionTo(Models::ProcessState::Blocked, &transReason)) {
+        if (outReason) *outReason = QStringLiteral("Cannot block flight %1: %2").arg(m_runningProcess.flightId).arg(transReason);
+        return false;
+    }
+
+    m_runningProcess.transitionTo(Models::ProcessState::Blocked);
+    if (outBlocked) {
+        *outBlocked = m_runningProcess;
+    }
+
+    clearRunningProcess();
+    return true;
+}
+
+Scheduler::PerformanceMetrics Scheduler::calculateAggregateMetrics() const
+{
+    PerformanceMetrics metrics;
+    metrics.completedCount = m_completedProcesses.size();
+
+    if (metrics.completedCount == 0) {
+        return metrics;
+    }
+
+    int totalTat = 0;
+    int totalWt = 0;
+    int minWt = m_completedProcesses.first().waitingTime;
+    int maxWt = m_completedProcesses.first().waitingTime;
+    int minTat = m_completedProcesses.first().turnaroundTime;
+    int maxTat = m_completedProcesses.first().turnaroundTime;
+
+    for (const auto &p : m_completedProcesses) {
+        totalTat += p.turnaroundTime;
+        totalWt += p.waitingTime;
+
+        if (p.waitingTime < minWt) minWt = p.waitingTime;
+        if (p.waitingTime > maxWt) maxWt = p.waitingTime;
+        if (p.turnaroundTime < minTat) minTat = p.turnaroundTime;
+        if (p.turnaroundTime > maxTat) maxTat = p.turnaroundTime;
+    }
+
+    metrics.totalTurnaroundTime = totalTat;
+    metrics.totalWaitingTime = totalWt;
+    metrics.averageTurnaroundTime = static_cast<double>(totalTat) / static_cast<double>(metrics.completedCount);
+    metrics.averageWaitingTime = static_cast<double>(totalWt) / static_cast<double>(metrics.completedCount);
+    metrics.minWaitingTime = minWt;
+    metrics.maxWaitingTime = maxWt;
+    metrics.minTurnaroundTime = minTat;
+    metrics.maxTurnaroundTime = maxTat;
+
+    return metrics;
+}
+
 void Scheduler::reset()
 {
     m_readyQueue.clear();
     clearRunningProcess();
+    m_completedProcesses.clear();
 }
+

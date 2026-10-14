@@ -2093,6 +2093,111 @@ bool ApplicationService::dispatchNextProcess(Models::Process *outDispatched, QSt
     return true;
 }
 
+bool ApplicationService::completeRunningProcess(const QDateTime &completedAt,
+                                                Models::Process *outCompleted,
+                                                QString *outError)
+{
+    // 1. RBAC check
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot complete processes.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to complete scheduling processes.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (!m_scheduler) {
+        if (outError) *outError = QStringLiteral("Scheduler service is not initialized.");
+        return false;
+    }
+
+    if (!m_scheduler->hasRunningProcess()) {
+        if (outError) *outError = QStringLiteral("No process is currently RUNNING to complete.");
+        return false;
+    }
+
+    Models::Process running = m_scheduler->runningProcess();
+
+    // Determine completion timestamp and compute metrics
+    QDateTime compTime = completedAt.isValid() ? completedAt : running.arrivalTime.addSecs(running.serviceTime);
+    QString metricErr;
+    if (!running.calculateMetrics(compTime, &metricErr)) {
+        if (outError) *outError = metricErr;
+        return false;
+    }
+
+    // 2. Database update if DB is connected
+    if (DatabaseManager::instance().isConnected()) {
+        QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+        if (db.isOpen()) {
+            QSqlQuery q(db);
+            q.prepare(QStringLiteral(
+                "UPDATE scheduling_queue "
+                "SET process_state = 'Completed', "
+                "    waiting_time = :wt, "
+                "    turnaround_time = :tat, "
+                "    completion_time = :ct "
+                "WHERE flight_id = :fid AND process_state = 'Running';"
+            ));
+            q.bindValue(QStringLiteral(":wt"), running.waitingTime);
+            q.bindValue(QStringLiteral(":tat"), running.turnaroundTime);
+            q.bindValue(QStringLiteral(":ct"), running.completionTime);
+            q.bindValue(QStringLiteral(":fid"), running.flightId);
+
+            if (!q.exec()) {
+                qWarning() << "[ApplicationService] completeRunningProcess DB update failed:" << q.lastError().text();
+                if (outError) {
+                    *outError = QStringLiteral("Database update failed during process completion: %1").arg(q.lastError().text());
+                }
+                return false;
+            }
+
+            if (q.numRowsAffected() == 0) {
+                if (outError) {
+                    *outError = QStringLiteral("Database update failed: process for flight %1 was not in 'Running' state in database.")
+                                    .arg(running.flightId);
+                }
+                return false;
+            }
+        }
+    }
+
+    // 3. Complete in Scheduler (computes metrics, records in m_completedProcesses, clears running)
+    Scheduler::CompletionResult res = m_scheduler->completeRunningProcess(compTime);
+    if (!res.success) {
+        if (outError) *outError = res.reason;
+        return false;
+    }
+
+    if (outCompleted) {
+        *outCompleted = res.process;
+    }
+
+    emit processesChanged();
+    return true;
+}
+
+Scheduler::PerformanceMetrics ApplicationService::getAggregateSchedulingMetrics() const
+{
+    if (m_scheduler) {
+        return m_scheduler->calculateAggregateMetrics();
+    }
+    return Scheduler::PerformanceMetrics();
+}
+
+QList<Models::Process> ApplicationService::getCompletedProcesses() const
+{
+    if (m_scheduler) {
+        return m_scheduler->completedProcesses();
+    }
+    return QList<Models::Process>();
+}
+
 
 
 

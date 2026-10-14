@@ -88,6 +88,30 @@ public:
     DispatchResult dispatchNextProcess();
 
     /**
+     * @brief Summary of scheduling performance metrics across completed processes.
+     */
+    struct PerformanceMetrics {
+        int    completedCount = 0;
+        double averageTurnaroundTime = 0.0;
+        double averageWaitingTime = 0.0;
+        int    totalTurnaroundTime = 0;
+        int    totalWaitingTime = 0;
+        int    minWaitingTime = 0;
+        int    maxWaitingTime = 0;
+        int    minTurnaroundTime = 0;
+        int    maxTurnaroundTime = 0;
+    };
+
+    /**
+     * @brief Detailed result of a process completion and metric calculation event.
+     */
+    struct CompletionResult {
+        bool success = false;
+        Models::Process process;
+        QString reason;
+    };
+
+    /**
      * @brief Checks if the scheduler currently has an active RUNNING process.
      */
     bool hasRunningProcess() const { return m_hasRunningProcess; }
@@ -112,7 +136,39 @@ public:
     void clearRunningProcess();
 
     /**
-     * @brief Resets the scheduler state (clears ready queue and running process).
+     * @brief Completes the currently RUNNING process at a given completion timestamp.
+     * Computes CT, TAT, and WT. Transitions process to Completed and stores in completed records.
+     *
+     * @param completedAt Optional completion timestamp. Defaults to arrivalTime + serviceTime if invalid.
+     * @return CompletionResult containing success status, updated process, and explanatory reason.
+     */
+    CompletionResult completeRunningProcess(const QDateTime &completedAt = QDateTime());
+
+    /**
+     * @brief Completes a specified process directly (for batch or simulation replay).
+     * Validates that the process is in RUNNING state or valid transition to Completed.
+     */
+    CompletionResult completeProcess(Models::Process process, const QDateTime &completedAt = QDateTime());
+
+    /**
+     * @brief Blocks the currently RUNNING process.
+     * Does NOT mark as Completed; transitions to Blocked and clears running process.
+     */
+    bool blockRunningProcess(Models::Process *outBlocked = nullptr, QString *outReason = nullptr);
+
+    /**
+     * @brief Returns list of all completed processes with computed metrics.
+     */
+    QList<Models::Process> completedProcesses() const { return m_completedProcesses; }
+
+    /**
+     * @brief Computes aggregate performance metrics for all completed processes.
+     * Guaranteed well-defined for empty sets (averages = 0.0).
+     */
+    PerformanceMetrics calculateAggregateMetrics() const;
+
+    /**
+     * @brief Resets the scheduler state (clears ready queue, running process, and completed records).
      */
     void reset();
 
@@ -134,6 +190,11 @@ signals:
     void processDispatched(const Models::Process &process);
 
     /**
+     * @brief Emitted when a process completes execution and its metrics are computed.
+     */
+    void processCompleted(const Models::Process &process);
+
+    /**
      * @brief Emitted after a scheduling cycle completes.
      * Connected to UI widgets to refresh the scheduling queue view.
      */
@@ -148,4 +209,5 @@ private:
     SchedulerComponents::ReadyQueue m_readyQueue;
     Models::Process                 m_runningProcess;
     bool                            m_hasRunningProcess = false;
+    QList<Models::Process>          m_completedProcesses;
 };

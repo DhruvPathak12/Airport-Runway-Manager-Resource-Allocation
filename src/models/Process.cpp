@@ -64,6 +64,80 @@ bool Process::validate(QString *outError) const
     return true;
 }
 
+bool Process::calculateMetrics(const QDateTime &completedAt, QString *outError)
+{
+    if (!completedAt.isValid()) {
+        if (outError) *outError = QStringLiteral("Completion time must be a valid date and time.");
+        return false;
+    }
+
+    if (!arrivalTime.isValid()) {
+        if (outError) *outError = QStringLiteral("Arrival time is invalid; cannot compute metrics.");
+        return false;
+    }
+
+    if (completedAt < arrivalTime) {
+        if (outError) {
+            *outError = QStringLiteral("Completion time (%1) cannot precede arrival time (%2).")
+                            .arg(completedAt.toString(Qt::ISODate))
+                            .arg(arrivalTime.toString(Qt::ISODate));
+        }
+        return false;
+    }
+
+    qint64 tatSec = arrivalTime.secsTo(completedAt);
+    if (tatSec < serviceTime) {
+        if (outError) {
+            *outError = QStringLiteral("Turnaround time (%1s) cannot be less than service burst duration (%2s).")
+                            .arg(tatSec)
+                            .arg(serviceTime);
+        }
+        return false;
+    }
+
+    if (tatSec > 65535) {
+        if (outError) *outError = QStringLiteral("Calculated turnaround time exceeds 65535 seconds limit.");
+        return false;
+    }
+
+    qint64 wtSec = tatSec - serviceTime;
+    if (wtSec < 0 || wtSec > 65535) {
+        if (outError) *outError = QStringLiteral("Calculated waiting time is out of valid range (0-65535).");
+        return false;
+    }
+
+    completionTime = completedAt;
+    turnaroundTime = static_cast<int>(tatSec);
+    waitingTime = static_cast<int>(wtSec);
+    return true;
+}
+
+bool Process::calculateMetricsFromStart(const QDateTime &startedAt, QString *outError)
+{
+    if (!startedAt.isValid()) {
+        if (outError) *outError = QStringLiteral("Start time must be a valid date and time.");
+        return false;
+    }
+
+    if (!arrivalTime.isValid()) {
+        if (outError) *outError = QStringLiteral("Arrival time is invalid; cannot compute metrics.");
+        return false;
+    }
+
+    if (startedAt < arrivalTime) {
+        if (outError) {
+            *outError = QStringLiteral("Execution start time (%1) cannot precede arrival time (%2).")
+                            .arg(startedAt.toString(Qt::ISODate))
+                            .arg(arrivalTime.toString(Qt::ISODate));
+        }
+        return false;
+    }
+
+    QDateTime compAt = startedAt.addSecs(serviceTime);
+    return calculateMetrics(compAt, outError);
+}
+
+
 bool Process::canTransitionTo(ProcessState targetState, QString *outReason) const
 {
     if (state == targetState) {

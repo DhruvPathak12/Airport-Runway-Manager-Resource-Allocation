@@ -10,8 +10,8 @@
 #include "models/Aircraft.h"
 #include "models/Process.h"
 #include "scheduler/ReadyQueue.h"
+#include "scheduler/Scheduler.h"
 
-class Scheduler;
 class ResourceManager;
 
 /**
@@ -298,6 +298,25 @@ public:
      * in-memory ReadyQueue and runningProcess state. If DB update fails, in-memory state is preserved.
      */
     bool dispatchNextProcess(Models::Process *outDispatched = nullptr, QString *outError = nullptr);
+
+    /**
+     * @brief Completes the currently RUNNING process, computes its metrics (CT, TAT, WT),
+     * and persists the Completed state and metrics to MySQL scheduling_queue.
+     * Enforces RBAC (action:ManageScheduling).
+     */
+    bool completeRunningProcess(const QDateTime &completedAt = QDateTime(),
+                                Models::Process *outCompleted = nullptr,
+                                QString *outError = nullptr);
+
+    /**
+     * @brief Returns aggregate scheduling performance metrics across completed processes.
+     */
+    Scheduler::PerformanceMetrics getAggregateSchedulingMetrics() const;
+
+    /**
+     * @brief Returns all completed processes recorded by the scheduler.
+     */
+    QList<Models::Process> getCompletedProcesses() const;
 
 signals:
     /**
