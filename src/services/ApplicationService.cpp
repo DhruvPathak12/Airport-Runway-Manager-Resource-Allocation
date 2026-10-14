@@ -1343,5 +1343,477 @@ bool ApplicationService::deleteAircraft(int aircraftId, QString *outError)
     return true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Day 9: Process Model (PCB) and Scheduling Queue Integration
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool ApplicationService::createProcessForFlight(int flightId,
+                                                int serviceTimeSeconds,
+                                                Models::Process *outProcess,
+                                                QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot enqueue flights.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to create scheduling processes (ATC/Admin only).")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (serviceTimeSeconds <= 0 || serviceTimeSeconds > 65535) {
+        if (outError) *outError = QStringLiteral("Service time must be between 1 and 65535 seconds.");
+        return false;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    // 1. Fetch flight to verify existence and retrieve attributes
+    Models::Flight flight;
+    if (!getFlightById(flightId, flight, outError)) {
+        return false;
+    }
+
+    // 2. Check flight eligibility (cannot be Landed, Departed, or Cancelled)
+    QString ineligibilityReason;
+    if (!Models::Process::isFlightEligible(flight, &ineligibilityReason)) {
+        if (outError) *outError = ineligibilityReason;
+        return false;
+    }
+
+    // 3. Prevent duplicate active process record for this flight (enforce 1:0..1)
+    QSqlQuery checkQuery(db);
+    checkQuery.prepare(QStringLiteral("SELECT queue_id FROM scheduling_queue WHERE flight_id = :flightId LIMIT 1;"));
+    checkQuery.bindValue(QStringLiteral(":flightId"), flightId);
+    if (!checkQuery.exec()) {
+        qWarning() << "[ApplicationService] Duplicate check query failed:" << checkQuery.lastError().text();
+        if (outError) *outError = QStringLiteral("Failed to check existing scheduling record: %1").arg(checkQuery.lastError().text());
+        return false;
+    }
+    if (checkQuery.next()) {
+        if (outError) {
+            *outError = QStringLiteral("Flight %1 (ID: %2) already has an active scheduling record.")
+                            .arg(flight.flightNumber.isEmpty() ? QString::number(flightId) : flight.flightNumber)
+                            .arg(flightId);
+        }
+        return false;
+    }
+
+    // 4. Map flight to simulated Process (PCB)
+    Models::Process proc = Models::Process::fromFlight(flight, serviceTimeSeconds);
+    QString validationError;
+    if (!proc.validate(&validationError)) {
+        if (outError) *outError = validationError;
+        return false;
+    }
+
+    // 5. Parameterized insert into scheduling_queue table
+    QSqlQuery insertQuery(db);
+    insertQuery.prepare(QStringLiteral(
+        "INSERT INTO scheduling_queue ("
+        "    flight_id, arrival_time, base_priority, effective_priority, service_time, process_state"
+        ") VALUES ("
+        "    :flightId, :arrivalTime, :basePriority, :effectivePriority, :serviceTime, :processState"
+        ");"
+    ));
+    insertQuery.bindValue(QStringLiteral(":flightId"), proc.flightId);
+    insertQuery.bindValue(QStringLiteral(":arrivalTime"), proc.arrivalTime);
+    insertQuery.bindValue(QStringLiteral(":basePriority"), proc.basePriority);
+    insertQuery.bindValue(QStringLiteral(":effectivePriority"), proc.effectivePriority);
+    insertQuery.bindValue(QStringLiteral(":serviceTime"), proc.serviceTime);
+    insertQuery.bindValue(QStringLiteral(":processState"), Models::Process::stateToDbString(proc.state));
+
+    if (!insertQuery.exec()) {
+        qWarning() << "[ApplicationService] createProcessForFlight INSERT failed:" << insertQuery.lastError().text();
+        if (outError) {
+            QString dbErr = insertQuery.lastError().databaseText();
+            if (dbErr.contains(QStringLiteral("Duplicate entry"), Qt::CaseInsensitive) ||
+                insertQuery.lastError().nativeErrorCode() == QStringLiteral("1062")) {
+                *outError = QStringLiteral("Flight %1 (ID: %2) already has an active scheduling record.")
+                                .arg(flight.flightNumber.isEmpty() ? QString::number(flightId) : flight.flightNumber)
+                                .arg(flightId);
+            } else {
+                *outError = QStringLiteral("Failed to insert process into scheduling queue: %1")
+                                .arg(dbErr.isEmpty() ? insertQuery.lastError().text() : dbErr);
+            }
+        }
+        return false;
+    }
+
+    int assignedQueueId = insertQuery.lastInsertId().toInt();
+    proc.setQueueId(assignedQueueId);
+
+    if (outProcess) {
+        *outProcess = proc;
+    }
+
+    emit processesChanged();
+    return true;
+}
+
+bool ApplicationService::createProcess(const Models::Process &process,
+                                       Models::Process *outProcess,
+                                       QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot create processes.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to create scheduling processes (ATC/Admin only).")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    QString validationError;
+    if (!process.validate(&validationError)) {
+        if (outError) *outError = validationError;
+        return false;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    // Verify referenced flight exists and is eligible
+    Models::Flight flight;
+    if (!getFlightById(process.flightId, flight, outError)) {
+        return false;
+    }
+
+    QString ineligibilityReason;
+    if (!Models::Process::isFlightEligible(flight, &ineligibilityReason)) {
+        if (outError) *outError = ineligibilityReason;
+        return false;
+    }
+
+    // Check duplicate
+    QSqlQuery checkQuery(db);
+    checkQuery.prepare(QStringLiteral("SELECT queue_id FROM scheduling_queue WHERE flight_id = :flightId LIMIT 1;"));
+    checkQuery.bindValue(QStringLiteral(":flightId"), process.flightId);
+    if (!checkQuery.exec()) {
+        if (outError) *outError = QStringLiteral("Failed to check existing scheduling record: %1").arg(checkQuery.lastError().text());
+        return false;
+    }
+    if (checkQuery.next()) {
+        if (outError) {
+            *outError = QStringLiteral("Flight %1 (ID: %2) already has an active scheduling record.")
+                            .arg(flight.flightNumber.isEmpty() ? QString::number(process.flightId) : flight.flightNumber)
+                            .arg(process.flightId);
+        }
+        return false;
+    }
+
+    QSqlQuery insertQuery(db);
+    insertQuery.prepare(QStringLiteral(
+        "INSERT INTO scheduling_queue ("
+        "    flight_id, arrival_time, base_priority, effective_priority, service_time, process_state"
+        ") VALUES ("
+        "    :flightId, :arrivalTime, :basePriority, :effectivePriority, :serviceTime, :processState"
+        ");"
+    ));
+    insertQuery.bindValue(QStringLiteral(":flightId"), process.flightId);
+    insertQuery.bindValue(QStringLiteral(":arrivalTime"), process.arrivalTime);
+    insertQuery.bindValue(QStringLiteral(":basePriority"), process.basePriority);
+    insertQuery.bindValue(QStringLiteral(":effectivePriority"), process.effectivePriority);
+    insertQuery.bindValue(QStringLiteral(":serviceTime"), process.serviceTime);
+    insertQuery.bindValue(QStringLiteral(":processState"), Models::Process::stateToDbString(process.state));
+
+    if (!insertQuery.exec()) {
+        qWarning() << "[ApplicationService] createProcess INSERT failed:" << insertQuery.lastError().text();
+        if (outError) {
+            QString dbErr = insertQuery.lastError().databaseText();
+            if (dbErr.contains(QStringLiteral("Duplicate entry"), Qt::CaseInsensitive) ||
+                insertQuery.lastError().nativeErrorCode() == QStringLiteral("1062")) {
+                *outError = QStringLiteral("Flight %1 (ID: %2) already has an active scheduling record.")
+                                .arg(flight.flightNumber.isEmpty() ? QString::number(process.flightId) : flight.flightNumber)
+                                .arg(process.flightId);
+            } else {
+                *outError = QStringLiteral("Failed to insert process into scheduling queue: %1")
+                                .arg(dbErr.isEmpty() ? insertQuery.lastError().text() : dbErr);
+            }
+        }
+        return false;
+    }
+
+    Models::Process created = process;
+    created.setQueueId(insertQuery.lastInsertId().toInt());
+    if (created.flightNumber.isEmpty()) created.flightNumber = flight.flightNumber;
+    if (created.airline.isEmpty()) created.airline = flight.airline;
+    if (created.operationalStatus.isEmpty()) created.operationalStatus = flight.operationalStatus;
+
+    if (outProcess) {
+        *outProcess = created;
+    }
+
+    emit processesChanged();
+    return true;
+}
+
+bool ApplicationService::hasProcessForFlight(int flightId, QString *outError)
+{
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral("SELECT queue_id FROM scheduling_queue WHERE flight_id = :id LIMIT 1;"));
+    query.bindValue(QStringLiteral(":id"), flightId);
+
+    if (!query.exec()) {
+        if (outError) *outError = QStringLiteral("Failed to query scheduling queue: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    return query.next();
+}
+
+bool ApplicationService::getProcessByFlightId(int flightId, Models::Process &outProcess, QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required to view scheduling queue.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("page:Scheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to view scheduling processes.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "SELECT q.queue_id, q.flight_id, q.arrival_time, q.base_priority, q.effective_priority, "
+        "       q.service_time, q.waiting_time, q.turnaround_time, q.completion_time, q.process_state, "
+        "       f.flight_number, f.airline, f.operational_status "
+        "FROM scheduling_queue q "
+        "LEFT JOIN flights f ON q.flight_id = f.flight_id "
+        "WHERE q.flight_id = :flightId "
+        "LIMIT 1;"
+    ));
+    query.bindValue(QStringLiteral(":flightId"), flightId);
+
+    if (!query.exec()) {
+        qWarning() << "[ApplicationService] getProcessByFlightId query failed:" << query.lastError().text();
+        if (outError) *outError = QStringLiteral("Failed to fetch process: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    if (!query.next()) {
+        if (outError) *outError = QStringLiteral("Process not found for flight ID %1.").arg(flightId);
+        return false;
+    }
+
+    outProcess.setQueueId(query.value(QStringLiteral("queue_id")).toInt());
+    outProcess.flightId = query.value(QStringLiteral("flight_id")).toInt();
+    outProcess.arrivalTime = query.value(QStringLiteral("arrival_time")).toDateTime();
+    outProcess.basePriority = query.value(QStringLiteral("base_priority")).toInt();
+    outProcess.effectivePriority = query.value(QStringLiteral("effective_priority")).toInt();
+    outProcess.serviceTime = query.value(QStringLiteral("service_time")).toInt();
+    outProcess.waitingTime = query.value(QStringLiteral("waiting_time")).isNull() ? -1 : query.value(QStringLiteral("waiting_time")).toInt();
+    outProcess.turnaroundTime = query.value(QStringLiteral("turnaround_time")).isNull() ? -1 : query.value(QStringLiteral("turnaround_time")).toInt();
+    outProcess.completionTime = query.value(QStringLiteral("completion_time")).isNull() ? QDateTime() : query.value(QStringLiteral("completion_time")).toDateTime();
+    outProcess.state = Models::Process::stateFromString(query.value(QStringLiteral("process_state")).toString());
+    outProcess.flightNumber = query.value(QStringLiteral("flight_number")).toString();
+    outProcess.airline = query.value(QStringLiteral("airline")).toString();
+    outProcess.operationalStatus = query.value(QStringLiteral("operational_status")).toString();
+
+    return true;
+}
+
+bool ApplicationService::getProcessById(int queueId, Models::Process &outProcess, QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required to view scheduling queue.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("page:Scheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to view scheduling processes.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return false;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "SELECT q.queue_id, q.flight_id, q.arrival_time, q.base_priority, q.effective_priority, "
+        "       q.service_time, q.waiting_time, q.turnaround_time, q.completion_time, q.process_state, "
+        "       f.flight_number, f.airline, f.operational_status "
+        "FROM scheduling_queue q "
+        "LEFT JOIN flights f ON q.flight_id = f.flight_id "
+        "WHERE q.queue_id = :queueId "
+        "LIMIT 1;"
+    ));
+    query.bindValue(QStringLiteral(":queueId"), queueId);
+
+    if (!query.exec()) {
+        qWarning() << "[ApplicationService] getProcessById query failed:" << query.lastError().text();
+        if (outError) *outError = QStringLiteral("Failed to fetch process: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    if (!query.next()) {
+        if (outError) *outError = QStringLiteral("Process not found for queue ID %1.").arg(queueId);
+        return false;
+    }
+
+    outProcess.setQueueId(query.value(QStringLiteral("queue_id")).toInt());
+    outProcess.flightId = query.value(QStringLiteral("flight_id")).toInt();
+    outProcess.arrivalTime = query.value(QStringLiteral("arrival_time")).toDateTime();
+    outProcess.basePriority = query.value(QStringLiteral("base_priority")).toInt();
+    outProcess.effectivePriority = query.value(QStringLiteral("effective_priority")).toInt();
+    outProcess.serviceTime = query.value(QStringLiteral("service_time")).toInt();
+    outProcess.waitingTime = query.value(QStringLiteral("waiting_time")).isNull() ? -1 : query.value(QStringLiteral("waiting_time")).toInt();
+    outProcess.turnaroundTime = query.value(QStringLiteral("turnaround_time")).isNull() ? -1 : query.value(QStringLiteral("turnaround_time")).toInt();
+    outProcess.completionTime = query.value(QStringLiteral("completion_time")).isNull() ? QDateTime() : query.value(QStringLiteral("completion_time")).toDateTime();
+    outProcess.state = Models::Process::stateFromString(query.value(QStringLiteral("process_state")).toString());
+    outProcess.flightNumber = query.value(QStringLiteral("flight_number")).toString();
+    outProcess.airline = query.value(QStringLiteral("airline")).toString();
+    outProcess.operationalStatus = query.value(QStringLiteral("operational_status")).toString();
+
+    return true;
+}
+
+QList<Models::Process> ApplicationService::getAllProcesses(QString *outError)
+{
+    QList<Models::Process> results;
+
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required to view scheduling queue.");
+        return results;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("page:Scheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to view scheduling processes.")
+                            .arg(m_session.role());
+        }
+        return results;
+    }
+
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return results;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) *outError = QStringLiteral("Database is not currently open.");
+        return results;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "SELECT q.queue_id, q.flight_id, q.arrival_time, q.base_priority, q.effective_priority, "
+        "       q.service_time, q.waiting_time, q.turnaround_time, q.completion_time, q.process_state, "
+        "       f.flight_number, f.airline, f.operational_status "
+        "FROM scheduling_queue q "
+        "LEFT JOIN flights f ON q.flight_id = f.flight_id "
+        "ORDER BY q.queue_id ASC;"
+    ));
+
+    if (!query.exec()) {
+        qWarning() << "[ApplicationService] getAllProcesses query failed:" << query.lastError().text();
+        if (outError) *outError = QStringLiteral("Failed to fetch processes: %1").arg(query.lastError().text());
+        return results;
+    }
+
+    while (query.next()) {
+        Models::Process proc;
+        proc.setQueueId(query.value(QStringLiteral("queue_id")).toInt());
+        proc.flightId = query.value(QStringLiteral("flight_id")).toInt();
+        proc.arrivalTime = query.value(QStringLiteral("arrival_time")).toDateTime();
+        proc.basePriority = query.value(QStringLiteral("base_priority")).toInt();
+        proc.effectivePriority = query.value(QStringLiteral("effective_priority")).toInt();
+        proc.serviceTime = query.value(QStringLiteral("service_time")).toInt();
+        proc.waitingTime = query.value(QStringLiteral("waiting_time")).isNull() ? -1 : query.value(QStringLiteral("waiting_time")).toInt();
+        proc.turnaroundTime = query.value(QStringLiteral("turnaround_time")).isNull() ? -1 : query.value(QStringLiteral("turnaround_time")).toInt();
+        proc.completionTime = query.value(QStringLiteral("completion_time")).isNull() ? QDateTime() : query.value(QStringLiteral("completion_time")).toDateTime();
+        proc.state = Models::Process::stateFromString(query.value(QStringLiteral("process_state")).toString());
+        proc.flightNumber = query.value(QStringLiteral("flight_number")).toString();
+        proc.airline = query.value(QStringLiteral("airline")).toString();
+        proc.operationalStatus = query.value(QStringLiteral("operational_status")).toString();
+
+        results.append(proc);
+    }
+
+    return results;
+}
+
+
 
 

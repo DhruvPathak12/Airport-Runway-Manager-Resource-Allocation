@@ -487,7 +487,7 @@ All 4 CTest targets pass 100%:
 - Test records cleanly removed; seed data fully preserved.
 
 ### Known Limitations
-- Process model creation (PCB) and ready queue insertion are deferred to Day 9.
+- Process model creation (PCB) and ready queue insertion are completed in Day 9.
 - Runway assignment workflows are deferred to Day 14.
 - Priority scheduling and aging algorithms are deferred to Days 11–12.
 
@@ -496,9 +496,110 @@ All 4 CTest targets pass 100%:
 
 ---
 
+## DAY 9 — Process Model (PCB) and Flight-to-Process Mapping ✅ COMPLETE
+
+### Files Created/Modified
+- `src/models/Process.h` (NEW — strongly-typed Process Control Block model, ProcessState enum, validation, flight-to-process mapping)
+- `src/models/Process.cpp` (NEW — implementation of PCB validation, string/DB state conversions, eligibility checks, mapping)
+- `src/services/ApplicationService.h` (Added `createProcessForFlight`, `createProcess`, `hasProcessForFlight`, `getProcessByFlightId`, `getProcessById`, `getAllProcesses`, and `processesChanged` signal)
+- `src/services/ApplicationService.cpp` (Implemented process creation, duplicate prevention on `flight_id`, flight eligibility check, and queries)
+- `CMakeLists.txt` (Added `src/models/Process.h` and `Process.cpp` to `APP_SOURCES` and test suites, added `TestProcessModel` test target)
+- `tests/TestProcessModel.cpp` (NEW — 19 automated Qt unit & live integration tests)
+- `PROJECT_STATUS.md` (Updated with Day 9 report)
+
+### Process Control Block (PCB) Design
+- **Identity & Identification**:
+  - `id` / `queueId`: Integer primary key mapping to `scheduling_queue.queue_id` (`0` indicates unsaved/new record, `> 0` indicates persisted record).
+  - `flightId` / `processId()`: Integer foreign key linking the PCB to `flights.flight_id`. Acts as the unique simulated process ID (PID).
+- **Scheduling Attributes**:
+  - `arrivalTime`: `QDateTime` recording entry into the scheduling queue.
+  - `basePriority`: Static priority integer (`1` highest … `5` lowest, default `3`).
+  - `effectivePriority`: Dynamic priority integer (`1` highest … `5` lowest, default `3`). Strictly separated from base priority to support Phase 2 aging without data mutation of the static flight priority.
+  - `serviceTime` / `burstTime()`: Simulated CPU burst duration in seconds (`SMALLINT UNSIGNED`, default `60s`, user-configurable).
+- **Execution State**:
+  - Type-safe `ProcessState` enum: `New`, `Ready`, `Running`, `Blocked`, `Completed`.
+  - Stored in MySQL `scheduling_queue.process_state` ENUM(`Ready`, `Running`, `Completed`, `Blocked`). Conceptual `New` maps to `Ready` when queued.
+- **Performance Metrics**:
+  - `waitingTime`: Seconds spent waiting in ready queue (`-1` = uncalculated/NULL).
+  - `turnaroundTime`: Elapsed duration from arrival to completion (`-1` = uncalculated/NULL).
+  - `completionTime`: `QDateTime` timestamp when process finished execution (invalid = NULL).
+  - Metrics remain uncalculated during Day 9, adhering strictly to the frozen scope.
+
+### Flight-to-Process Mapping & Duplicate Prevention
+- **Eligibility Rules**:
+  - Eligible operational statuses: `Scheduled`, `Taxiing`, `Cleared`.
+  - Excluded terminal / cancelled statuses: `Landed`, `Departed`, `Cancelled`.
+  - Unsaved flights (`id <= 0`) or flights with invalid priority are rejected.
+- **Mapping Logic**:
+  - `flight_id` maps to PCB `flightId`.
+  - `priority` maps to `basePriority` and initial `effectivePriority`.
+  - User-specified service time is preserved (defaults to 60s if not specified).
+  - `arrivalTime` set to current timestamp; `process_state` initialized to `Ready`.
+- **Duplicate Prevention**:
+  - Checked at application service level via parameterized query `SELECT queue_id FROM scheduling_queue WHERE flight_id = ?`.
+  - Enforced at schema level via `UNIQUE KEY uq_sq_flight_id (flight_id)` ensuring a 1:0..1 relationship.
+  - Attempted duplicates return descriptive error without crashing or silent replacement.
+
+### Database Impact
+- **Schema Modification**: NONE. `sql/schema.sql` was NOT modified.
+- **Table Reused**: The existing `scheduling_queue` table (8-table schema) was fully reused.
+- No 9th table was added.
+
+### Operating Systems Concepts Established
+- **Process Abstraction**: Flights modelled as simulated OS processes via C++ objects (not kernel processes).
+- **Process Control Block (PCB)**: Explicit data structure holding PID, priority, burst time, arrival time, state, and accounting metrics.
+- **Priority Separation**: Independent base and effective priority to prepare for dynamic aging algorithms.
+- **Process Lifecycle States**: Model representation of process lifecycle (`Ready`, `Running`, `Blocked`, `Completed`).
+
+### DBMS Concepts Established
+- **Referential Integrity**: `scheduling_queue.flight_id` enforced via foreign key to `flights.flight_id`.
+- **Cardinality Constraint**: `UNIQUE KEY uq_sq_flight_id` enforcing 1:0..1 flight-to-process queue relationship.
+- **Parameterized SQL**: All database operations use named parameter binding preventing SQL injection.
+- **Normalization (2NF/3NF)**: Queue attributes separated from flights table avoiding sparse NULLs on unscheduled flights.
+
+### Automated Test Results (19 / 19 Passed in TestProcessModel; 5 / 5 Test Suites Passed)
+1. `TestProcessModel::initTestCase` — PASS
+2. `TestProcessModel::testDefaultConstructionAndInitialization` — PASS
+3. `TestProcessModel::testSetAndGetIdentities` — PASS
+4. `TestProcessModel::testValidPriorityBoundaries` — PASS
+5. `TestProcessModel::testPriorityOutOfRangeRejection` — PASS
+6. `TestProcessModel::testServiceTimeValidation` — PASS
+7. `TestProcessModel::testBaseAndEffectivePrioritySeparation` — PASS
+8. `TestProcessModel::testProcessStateRepresentationAndMapping` — PASS
+9. `TestProcessModel::testFlightToProcessMapping` — PASS
+10. `TestProcessModel::testFlightEligibilityRules` — PASS
+11. `TestProcessModel::testMetricsRemainUncalculated` — PASS
+12. `TestProcessModel::testUnauthenticatedCannotEnqueueFlight` — PASS
+13. `TestProcessModel::testOperatorRoleDeniedProcessCreation` — PASS
+14. `TestProcessModel::testATCRolePermittedProcessCreation` — PASS
+15. `TestProcessModel::testAdminRolePermittedProcessCreation` — PASS
+16. `TestProcessModel::testLiveProcessCreationAndRetrieval` — PASS
+17. `TestProcessModel::testLiveDuplicateProcessRejection` — PASS
+18. `TestProcessModel::testLiveIneligibleFlightProcessCreationRejection` — PASS
+19. `TestProcessModel::cleanupTestCase` — PASS
+
+All 5 CTest suites pass 100%:
+- `TestDatabaseConnectivity`: Passed
+- `TestAuthAndRBAC`: Passed
+- `TestFlightManagement`: Passed
+- `TestAircraftManagement`: Passed
+- `TestProcessModel`: Passed (19/19 tests passed)
+
+### Scope Boundaries Confirmed (What was NOT implemented)
+- No scheduling algorithm (Day 11).
+- No ready queue ordering, priority queue, or state transition engine (Day 10).
+- No metrics calculation for WT, TAT, CT (Day 12).
+- No aging engine or starvation prevention (Days 17–18).
+- No emergency priority overrides (Day 16).
+- No runway mutexes, synchronization, or threads (Days 14–20).
+- No new database tables.
+
+---
+
 ## CURRENT MILESTONE
-Day 8 — COMPLETE
+Day 9 — COMPLETE
 
 ## NEXT MILESTONE
-Day 9 — Process Model (PCB) + Ready Queue
+Day 10 — Process States + Ready Queue Lifecycle
+
 

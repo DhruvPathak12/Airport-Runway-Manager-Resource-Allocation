@@ -66,6 +66,8 @@ set(APP_SOURCES
     src/models/User.h
     src/models/Session.h
     src/models/Session.cpp
+    src/models/Process.h
+    src/models/Process.cpp
 )
 
 add_executable(SmartATC ${APP_SOURCES})
@@ -117,6 +119,8 @@ add_executable(TestAuthAndRBAC
     src/utils/PasswordUtils.cpp
     src/models/Session.h
     src/models/Session.cpp
+    src/models/Process.h
+    src/models/Process.cpp
     src/services/ApplicationService.h
     src/services/ApplicationService.cpp
     src/database/DatabaseManager.h
@@ -149,6 +153,8 @@ add_executable(TestFlightManagement
     src/models/Session.h
     src/models/Session.cpp
     src/models/Flight.h
+    src/models/Process.h
+    src/models/Process.cpp
     src/services/ApplicationService.h
     src/services/ApplicationService.cpp
     src/database/DatabaseManager.h
@@ -182,6 +188,8 @@ add_executable(TestAircraftManagement
     src/models/Session.cpp
     src/models/Aircraft.h
     src/models/Flight.h
+    src/models/Process.h
+    src/models/Process.cpp
     src/services/ApplicationService.h
     src/services/ApplicationService.cpp
     src/database/DatabaseManager.h
@@ -206,3 +214,39 @@ target_include_directories(TestAircraftManagement
 )
 
 add_test(NAME TestAircraftManagement COMMAND TestAircraftManagement)
+
+add_executable(TestProcessModel
+    tests/TestProcessModel.cpp
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cpp
+    src/models/Session.h
+    src/models/Session.cpp
+    src/models/Aircraft.h
+    src/models/Flight.h
+    src/models/Process.h
+    src/models/Process.cpp
+    src/services/ApplicationService.h
+    src/services/ApplicationService.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/scheduler/Scheduler.h
+    src/scheduler/Scheduler.cpp
+    src/resource/ResourceManager.h
+    src/resource/ResourceManager.cpp
+)
+
+target_link_libraries(TestProcessModel
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestProcessModel
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestProcessModel COMMAND TestProcessModel)
+

@@ -8,6 +8,7 @@
 #include "models/Session.h"
 #include "models/Flight.h"
 #include "models/Aircraft.h"
+#include "models/Process.h"
 
 class Scheduler;
 class ResourceManager;
@@ -213,6 +214,51 @@ public:
      */
     bool deleteAircraft(int aircraftId, QString *outError = nullptr);
 
+    // ── Process & Scheduling Queue Methods (Day 9) ───────────────────────────
+    /**
+     * @brief Creates a simulated process for an eligible flight and persists it in scheduling_queue.
+     * Enforces RBAC (action:ManageScheduling - ATC/Admin only), flight eligibility,
+     * duplicate check (1:0..1 uniqueness on flight_id), and valid service time.
+     *
+     * @param flightId           Database ID of the flight to enqueue.
+     * @param serviceTimeSeconds User-entered CPU burst time (default 60s).
+     * @param outProcess         Optional pointer receiving the persisted Process model with assigned queue_id.
+     * @param outError           Optional output string receiving failure explanation.
+     * @return true if process was created and persisted successfully.
+     */
+    bool createProcessForFlight(int flightId,
+                                int serviceTimeSeconds = 60,
+                                Models::Process *outProcess = nullptr,
+                                QString *outError = nullptr);
+
+    /**
+     * @brief Persists an already-constructed Process PCB into scheduling_queue.
+     * Enforces RBAC, validation, flight existence, flight eligibility, and duplicate prevention.
+     */
+    bool createProcess(const Models::Process &process,
+                       Models::Process *outProcess = nullptr,
+                       QString *outError = nullptr);
+
+    /**
+     * @brief Checks if an active scheduling record already exists for a flight.
+     */
+    bool hasProcessForFlight(int flightId, QString *outError = nullptr);
+
+    /**
+     * @brief Fetches an individual process record by its associated flight ID.
+     */
+    bool getProcessByFlightId(int flightId, Models::Process &outProcess, QString *outError = nullptr);
+
+    /**
+     * @brief Fetches an individual process record by its primary key queue_id.
+     */
+    bool getProcessById(int queueId, Models::Process &outProcess, QString *outError = nullptr);
+
+    /**
+     * @brief Fetches all persisted processes from the scheduling queue.
+     */
+    QList<Models::Process> getAllProcesses(QString *outError = nullptr);
+
 signals:
     /**
      * @brief Emitted when the application is fully initialized and ready.
@@ -243,6 +289,11 @@ signals:
      * @brief Emitted when aircraft records are created, updated, or deleted.
      */
     void aircraftChanged();
+
+    /**
+     * @brief Emitted when processes are created or updated in the scheduling queue.
+     */
+    void processesChanged();
 
 private:
     Scheduler       *m_scheduler       = nullptr;
