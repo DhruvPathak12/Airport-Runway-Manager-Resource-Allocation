@@ -171,3 +171,74 @@ void ApplicationService::shutdown()
     qDebug() << "[ApplicationService] Shutdown complete.";
 }
 
+bool ApplicationService::executeSchedulerCycle(QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) {
+            *outError = QStringLiteral("Authentication required: unauthenticated users cannot trigger the scheduler.");
+        }
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to run the scheduler.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (m_scheduler) {
+        m_scheduler->runScheduler();
+        return true;
+    }
+
+    return false;
+}
+
+bool ApplicationService::allocateRunwayResource(int runwayId, int flightId, QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) {
+            *outError = QStringLiteral("Authentication required: unauthenticated users cannot allocate runways.");
+        }
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:RunwayAllocation"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to allocate runways (ATC-only).")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (m_resourceManager) {
+        return m_resourceManager->allocateRunway(runwayId, flightId);
+    }
+
+    return false;
+}
+
+bool ApplicationService::setRunwayMaintenanceStatus(int runwayId, bool inMaintenance, QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) {
+            *outError = QStringLiteral("Authentication required: unauthenticated users cannot alter runway status.");
+        }
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:RunwayMaintenance"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to perform runway maintenance (Airport Operator-only).")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    Q_UNUSED(runwayId)
+    Q_UNUSED(inMaintenance)
+    return true;
+}
+

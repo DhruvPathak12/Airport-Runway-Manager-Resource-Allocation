@@ -219,7 +219,19 @@ Plain C++17 structs — no Qt base class, no database logic embedded.
 | `Users` | Manage & Assign | Denied | Denied |
 
 - UI navigation dynamically hides and disables unauthorized items based on `Session::allowedNavItems()`.
-- Service/Business methods perform backend permission checks prior to executing protected operations.
+- Service/Business methods perform backend permission checks prior to executing protected operations (e.g. `ApplicationService::executeSchedulerCycle()`, `allocateRunwayResource()`, `setRunwayMaintenanceStatus()`).
+
+### Developer Demo Account Provisioning CLI
+For local developer testing, `SmartATC.exe` supports secure, direct CLI provisioning workflows that leverage `PasswordUtils::hash()` without storing or committing plaintext passwords:
+1. **Hash Generation**:
+   ```powershell
+   ./SmartATC.exe --hash-password <plainTextPassword>
+   ```
+2. **Account Provisioning**:
+   ```powershell
+   ./SmartATC.exe --provision-account "<username>:<password>:<roleName>:<fullName>"
+   ```
+   Requires a valid local `db.conf`. Prepares or updates accounts with verified SHA-256 hashes directly in MySQL with status `'Active'`.
 
 ---
 

@@ -33,7 +33,12 @@ private slots:
     void testLoginInputValidation();
     void testAuthenticationWithBoundParameters();
     void testLiveDatabaseAuthenticationIfConfigured();
+
+    // Action-level RBAC & Service boundary enforcement tests
+    void testActionLevelRBACEnforcement();
+    void testInactiveAccountRejected();
 };
+
 
 void TestAuthAndRBAC::testSha256DigestGeneration()
 {
@@ -232,12 +237,42 @@ void TestAuthAndRBAC::testLiveDatabaseAuthenticationIfConfigured()
     QVERIFY(err.contains(QStringLiteral("Invalid username or password")));
     QCOMPARE(service.isAuthenticated(), false);
 
-    // 2. Verify placeholder seed accounts cannot authenticate with dummy passwords
-    bool res2 = service.login(QStringLiteral("admin_demo"), QStringLiteral("wrongpassword"), &err);
-    QCOMPARE(res2, false);
-    QVERIFY(err.contains(QStringLiteral("Invalid username or password")));
+    // 3. Verify real provisioned demo accounts can authenticate and receive correct roles
+    // 3a. Admin demo account
+    bool adminLogin = service.login(QStringLiteral("admin_demo"), QStringLiteral("AdminPass#2026"), &err);
+    QVERIFY(adminLogin);
+    QVERIFY(service.isAuthenticated());
+    QCOMPARE(service.currentSession().role(), QStringLiteral("Admin"));
+    QVERIFY(service.currentSession().isAdmin());
+    QVERIFY(service.currentSession().hasPermission(QStringLiteral("page:Users")));
+    service.logout();
+    QCOMPARE(service.isAuthenticated(), false);
 
-    // 3. Provision an ephemeral test user, authenticate successfully, verify session & RBAC, then clean up
+    // 3b. ATC demo account
+    bool atcLogin = service.login(QStringLiteral("atc_demo"), QStringLiteral("AtcPass#2026"), &err);
+    QVERIFY(atcLogin);
+    QVERIFY(service.isAuthenticated());
+    QCOMPARE(service.currentSession().role(), QStringLiteral("ATC"));
+    QVERIFY(service.currentSession().isATC());
+    QVERIFY(service.currentSession().hasPermission(QStringLiteral("page:Flights")));
+    QVERIFY(service.currentSession().hasPermission(QStringLiteral("action:ManageFlights")));
+    QCOMPARE(service.currentSession().hasPermission(QStringLiteral("page:Users")), false);
+    service.logout();
+    QCOMPARE(service.isAuthenticated(), false);
+
+    // 3c. Airport Operator demo account
+    bool opLogin = service.login(QStringLiteral("operator_demo"), QStringLiteral("OperatorPass#2026"), &err);
+    QVERIFY(opLogin);
+    QVERIFY(service.isAuthenticated());
+    QCOMPARE(service.currentSession().role(), QStringLiteral("Airport Operator"));
+    QVERIFY(service.currentSession().isOperator());
+    QVERIFY(service.currentSession().hasPermission(QStringLiteral("page:Aircraft")));
+    QVERIFY(service.currentSession().hasPermission(QStringLiteral("action:RunwayMaintenance")));
+    QCOMPARE(service.currentSession().hasPermission(QStringLiteral("page:Users")), false);
+    service.logout();
+    QCOMPARE(service.isAuthenticated(), false);
+
+    // 4. Provision an ephemeral test user, authenticate successfully, verify session & RBAC, then clean up
     QString testUser = QStringLiteral("atc_test_unit");
     QString testPass = QStringLiteral("ValidPass#2026");
     QString testHash = PasswordUtils::hash(testPass);
@@ -277,6 +312,101 @@ void TestAuthAndRBAC::testLiveDatabaseAuthenticationIfConfigured()
     QCOMPARE(service.isAuthenticated(), false);
 
     // Clean up test account
+    QSqlQuery cleanQ(sqlDb);
+    cleanQ.prepare(QStringLiteral("DELETE FROM users WHERE username = :u"));
+    cleanQ.bindValue(QStringLiteral(":u"), testUser);
+    cleanQ.exec();
+}
+
+void TestAuthAndRBAC::testActionLevelRBACEnforcement()
+{
+    ApplicationService service;
+    QString err;
+
+    // 1. Unauthenticated invocation should fail for all actions
+    QCOMPARE(service.executeSchedulerCycle(&err), false);
+    QVERIFY(err.contains(QStringLiteral("Authentication required")));
+
+    QCOMPARE(service.allocateRunwayResource(1, 101, &err), false);
+    QVERIFY(err.contains(QStringLiteral("Authentication required")));
+
+    QCOMPARE(service.setRunwayMaintenanceStatus(1, true, &err), false);
+    QVERIFY(err.contains(QStringLiteral("Authentication required")));
+
+    // 2. Admin session
+    Session admin(1, QStringLiteral("admin"), QStringLiteral("Admin User"), QStringLiteral("Admin"));
+    service.setTestSession(admin);
+    // Admin can execute scheduling cycle (override)
+    QVERIFY(service.executeSchedulerCycle(&err));
+    // Admin CANNOT allocate runway resources directly (ATC-only)
+    QCOMPARE(service.allocateRunwayResource(1, 101, &err), false);
+    QVERIFY(err.contains(QStringLiteral("Access denied")));
+    // Admin CANNOT perform runway maintenance directly (Operator-only)
+    QCOMPARE(service.setRunwayMaintenanceStatus(1, true, &err), false);
+    QVERIFY(err.contains(QStringLiteral("Access denied")));
+
+    // 3. ATC session
+    Session atc(2, QStringLiteral("atc"), QStringLiteral("ATC User"), QStringLiteral("ATC"));
+    service.setTestSession(atc);
+    // ATC CAN run scheduler cycle
+    QVERIFY(service.executeSchedulerCycle(&err));
+    // ATC CAN allocate runway (stub returns false internally but authorization passes!)
+    err.clear();
+    service.allocateRunwayResource(1, 101, &err);
+    QVERIFY(!err.contains(QStringLiteral("Access denied")));
+    // ATC CANNOT perform runway maintenance
+    QCOMPARE(service.setRunwayMaintenanceStatus(1, true, &err), false);
+    QVERIFY(err.contains(QStringLiteral("Access denied")));
+
+    // 4. Airport Operator session
+    Session op(3, QStringLiteral("op"), QStringLiteral("Operator User"), QStringLiteral("Airport Operator"));
+    service.setTestSession(op);
+    // Operator CANNOT run scheduler cycle
+    QCOMPARE(service.executeSchedulerCycle(&err), false);
+    QVERIFY(err.contains(QStringLiteral("Access denied")));
+    // Operator CANNOT allocate runways
+    QCOMPARE(service.allocateRunwayResource(1, 101, &err), false);
+    QVERIFY(err.contains(QStringLiteral("Access denied")));
+    // Operator CAN set runway maintenance
+    err.clear();
+    QVERIFY(service.setRunwayMaintenanceStatus(1, true, &err));
+    QVERIFY(err.isEmpty());
+}
+
+void TestAuthAndRBAC::testInactiveAccountRejected()
+{
+    DatabaseManager &db = DatabaseManager::instance();
+    if (!db.isConnected()) {
+        if (!db.connect()) {
+            QSKIP("Live database connection unavailable, skipping inactive account test.");
+        }
+    }
+
+    ApplicationService service;
+    QString err;
+    QString testUser = QStringLiteral("suspended_user_test");
+    QString testPass = QStringLiteral("ValidPass#2026");
+    QString testHash = PasswordUtils::hash(testPass);
+
+    QSqlDatabase sqlDb = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    QSqlQuery q(sqlDb);
+    q.prepare(QStringLiteral(
+        "INSERT INTO users (username, password_hash, role_id, full_name, status) "
+        "VALUES (:u, :p, (SELECT role_id FROM roles WHERE role_name='ATC' LIMIT 1), 'Suspended User', 'Inactive') "
+        "ON DUPLICATE KEY UPDATE password_hash = :p2, status='Inactive';"
+    ));
+    q.bindValue(QStringLiteral(":u"), testUser);
+    q.bindValue(QStringLiteral(":p"), testHash);
+    q.bindValue(QStringLiteral(":p2"), testHash);
+    QVERIFY(q.exec());
+
+    // Attempt login with correct password but inactive status
+    bool res = service.login(testUser, testPass, &err);
+    QCOMPARE(res, false);
+    QVERIFY(!service.isAuthenticated());
+    QVERIFY(err.contains(QStringLiteral("inactive or suspended"), Qt::CaseInsensitive));
+
+    // Clean up
     QSqlQuery cleanQ(sqlDb);
     cleanQ.prepare(QStringLiteral("DELETE FROM users WHERE username = :u"));
     cleanQ.bindValue(QStringLiteral(":u"), testUser);

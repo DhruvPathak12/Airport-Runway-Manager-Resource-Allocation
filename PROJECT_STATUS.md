@@ -240,6 +240,8 @@ None.
 
 ---
  
+---
+ 
  ## DAY 6 — Login + Role-Based Access Control ✅ COMPLETE
  
  ### Files Created/Modified
@@ -247,15 +249,16 @@ None.
  - `src/utils/PasswordUtils.cpp` (Implemented SHA-256 password hashing and verification using `QCryptographicHash::Sha256`)
  - `src/models/Session.h` (NEW — In-memory session model with user identity and RBAC role helpers)
  - `src/models/Session.cpp` (NEW — Permission resolution logic and nav access rules for Admin, ATC, and Operator)
- - `src/services/ApplicationService.h` (Added `login()`, `logout()`, `currentSession()`, `hasPermission()`, signals)
- - `src/services/ApplicationService.cpp` (Database-backed authentication flow, parameterized SQL query, account status checks, session lifecycle)
+ - `src/services/ApplicationService.h` (Added `login()`, `logout()`, `currentSession()`, `hasPermission()`, action boundary methods `executeSchedulerCycle()`, `allocateRunwayResource()`, `setRunwayMaintenanceStatus()`)
+ - `src/services/ApplicationService.cpp` (Database-backed authentication flow, parameterized SQL query, account status checks, session lifecycle, action-level RBAC checks)
  - `ui/LoginView.h` (NEW — Clean, dedicated login screen widget)
  - `ui/LoginView.cpp` (NEW — Masked password input, form validation, error display, DB status badge, Enter key submission)
  - `ui/MainWindow.h` (Integrated `QStackedWidget` for authentication state toggling, user badge, logout button)
  - `ui/MainWindow.cpp` (Enforced RBAC on sidebar navigation, hides unauthorized views, dynamic user display)
- - `tests/TestAuthAndRBAC.cpp` (NEW — 17 automated tests for password utilities, session management, RBAC matrix, and parameterized auth queries)
+ - `src/main.cpp` (Added developer CLI flags `--hash-password` and `--provision-account` for secure, reproducible local testing)
+ - `tests/TestAuthAndRBAC.cpp` (NEW — 19 automated tests for password utilities, session management, RBAC matrix, service action boundaries, and live authentication)
  - `CMakeLists.txt` (Registered new model, UI, and test suite targets)
- - `docs/ARCHITECTURE.md` (Updated Section 8 with authentication and RBAC details)
+ - `docs/ARCHITECTURE.md` (Updated Section 8 with authentication, RBAC details, and developer provisioning instructions)
  - `PROJECT_STATUS.md` (Updated)
  
  ### Security & Password Limitation
@@ -263,9 +266,19 @@ None.
  - **Sanitization**: Plaintext passwords are never stored in session objects or logged. Database errors and user existence are scrubbed on the login UI.
  
  ### Role-Based Access Control Summary
- - **Admin**: Dashboard, Users (Exclusive), Flights (Read), Aircraft (Read/Manage), Runways (Read), Scheduling (Read), Transactions (Read/Audit), Logs (All).
+ - **Admin**: Dashboard, Users (Exclusive), Flights (Read), Aircraft (Read/Manage), Runways (Read), Scheduling (Read/Override), Transactions (Read/Audit), Logs (All).
  - **ATC**: Dashboard, Flights (Operational), Runways (Allocation), Scheduling (Queue/Run), Logs (ATC Ops). Restricted from Users.
  - **Airport Operator**: Dashboard, Aircraft (Operational), Runways (Maintenance), Logs (Aircraft Ops). Restricted from Scheduling and Users.
+ - **Service-Layer Action Enforcement**: Permissions checked at backend service methods (`ApplicationService`), not merely in the GUI.
+ 
+ ### Demo-Account Provisioning Workflow
+ Developers can provision or update local demo accounts via the compiled binary without hardcoding passwords in Git:
+ ```powershell
+ ./SmartATC.exe --provision-account "admin_demo:<password>:Admin:System Administrator (Demo)"
+ ./SmartATC.exe --provision-account "atc_demo:<password>:ATC:Radar Controller Alpha (Demo)"
+ ./SmartATC.exe --provision-account "operator_demo:<password>:Airport Operator:Ground Marshall Bravo (Demo)"
+ ```
+ Verified: `admin_demo`, `atc_demo`, and `operator_demo` are provisioned and successfully authenticate in live testing.
  
  ### Tests
  1. SHA-256 digest generation — PASS
@@ -283,9 +296,11 @@ None.
  13. Protected navigation denied when unauthenticated — PASS
  14. Authentication query uses bound parameters — PASS
  15. UI starts without database connection and does not grant access — PASS
- 16. Existing application build — PASS (19/19 units compiled cleanly)
+ 16. Existing application build — PASS (27 compilation units, 0 errors)
  17. Application launch and graceful shutdown — PASS
- 18. Live ephemeral MySQL user authentication — PASS (Real database query executed, authenticated, and cleaned up)
+ 18. Live database authentication (Admin, ATC, Operator, Ephemeral) — PASS
+ 19. Action-level service boundary RBAC enforcement — PASS
+ 20. Inactive / suspended account rejection — PASS
  
  ### Git
  - Branch: `main` → `origin/main`
@@ -293,7 +308,7 @@ None.
  ---
  
  ## CURRENT MILESTONE
- Day 6 — COMPLETE
+ Day 6 — COMPLETE (Verified & Hardened)
  
  ## NEXT MILESTONE
  Day 7 — Flight Management

@@ -92,6 +92,25 @@ public:
     Scheduler       *scheduler()       const { return m_scheduler; }
     ResourceManager *resourceManager() const { return m_resourceManager; }
 
+    // ── Role-Enforced Action Boundary Methods ─────────────────────────────────
+    /**
+     * @brief Triggers a scheduling cycle with action-level RBAC enforcement.
+     * Allowed only for ATC role (or Admin for manual override).
+     */
+    bool executeSchedulerCycle(QString *outError = nullptr);
+
+    /**
+     * @brief Triggers runway allocation with action-level RBAC enforcement.
+     * Allowed only for ATC role.
+     */
+    bool allocateRunwayResource(int runwayId, int flightId, QString *outError = nullptr);
+
+    /**
+     * @brief Sets runway maintenance status with action-level RBAC enforcement.
+     * Allowed only for Airport Operator role.
+     */
+    bool setRunwayMaintenanceStatus(int runwayId, bool inMaintenance, QString *outError = nullptr);
+
 signals:
     /**
      * @brief Emitted when the application is fully initialized and ready.
