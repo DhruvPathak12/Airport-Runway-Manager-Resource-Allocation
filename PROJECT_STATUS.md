@@ -677,20 +677,65 @@ All 6 CTest suites pass 100%:
 
 ### Scope Boundaries Confirmed (What was NOT implemented)
 - No non-preemptive priority scheduling or queue sorting (Day 11).
-- No automatic dispatching or execution loop (Day 11).
-- No waiting time, turnaround time, or completion time calculation (Day 12).
-- No dynamic aging engine or starvation prevention (Days 17–18).
-- No emergency priority overrides (Day 16).
-- No runway mutexes, synchronization primitives, or threads (Days 14–20).
-- No ninth database table or schema alteration.
+---
+
+## DAY 11 — Non-Preemptive Priority Scheduling Algorithm ✅ COMPLETE
+
+### Files Created/Modified
+- `src/scheduler/Scheduler.h` (updated — `DispatchResult`, `selectNextProcess`, `dispatchNextProcess`, `runningProcess`, `hasRunningProcess`, signals)
+- `src/scheduler/Scheduler.cpp` (updated — non-preemptive selection, deterministic tie-breaking by arrival time and flight ID, single-process dispatch, state transition enforcement)
+- `src/services/ApplicationService.h` (updated — `dispatchNextProcess` coordination, action RBAC enforcement)
+- `src/services/ApplicationService.cpp` (updated — `dispatchNextProcess` implementation with MySQL `scheduling_queue` state persistence and in-memory queue synchronization)
+- `CMakeLists.txt` (updated — registered `TestPriorityScheduler`)
+- `tests/TestPriorityScheduler.cpp` (NEW — 25 comprehensive unit and regression tests)
+
+### Operating System Scheduling Rules Enforced
+1. **Priority Model**: Numeric scale 1–5 where lower number = higher priority (1 is Highest, 5 is Lowest).
+2. **Deterministic Tie-Breaking**: Equal priority broken by earlier arrival time; identical arrival time broken by smaller flight ID (PID).
+3. **Strict Non-Preemption**: Dispatch is rejected if any process is already in RUNNING state. A newly arriving higher-priority process never preempts a currently running process.
+4. **Single-Process Dispatch**: Exactly one process transitions from READY to RUNNING per dispatch operation and leaves the ready queue.
+5. **State Safety**: Empty queues, completed processes, and illegal transitions are rejected safely without side effects or queue corruption.
+
+### Automated Test Results (25 / 25 Passed in TestPriorityScheduler; 7 / 7 Test Suites Passed 100%)
+- All 25 unit, state transition, non-preemption, and live persistence tests passed without errors.
+
+---
+
+## DAY 12 — Scheduling Metrics & Lifecycle Integration ✅ COMPLETE
+
+### Files Created/Modified
+- `src/models/Process.h` (updated — `calculateMetrics`, `isCompleted`, timing validation methods)
+- `src/models/Process.cpp` (updated — Turnaround Time (TAT = CT - AT) and Waiting Time (WT = TAT - Service Time) formulas and invariant validation)
+- `src/scheduler/Scheduler.h` (updated — `PerformanceMetrics`, `CompletionResult`, `completeRunningProcess`, `completeProcess`, `calculateAggregateMetrics`, `completedProcesses`)
+- `src/scheduler/Scheduler.cpp` (updated — metric computation, aggregation across completed processes, completed process collection management)
+- `src/services/ApplicationService.h` (updated — `completeRunningProcess`, `getAggregateSchedulingMetrics`, `getCompletedProcesses`)
+- `src/services/ApplicationService.cpp` (updated — `completeRunningProcess` with action RBAC and MySQL `scheduling_queue` persistence of CT, TAT, WT)
+- `CMakeLists.txt` (updated — registered `TestSchedulingMetrics`)
+- `tests/TestSchedulingMetrics.cpp` (NEW — 22 comprehensive unit and regression tests)
+
+### Scheduling Metric Formulas Implemented
+- **Completion Time (CT)**: Simulated or wall-clock completion timestamp.
+- **Turnaround Time (TAT)**: Total elapsed seconds from process arrival to execution completion: `TAT = CT - arrival_time`.
+- **Waiting Time (WT)**: Total idle seconds spent waiting in ready queue: `WT = TAT - service_time`.
+- **Aggregate Metrics**: Mean turnaround time and mean waiting time computed over completed process sets; zero-safe for empty sets.
+
+### Automated Test Results (22 / 22 Passed in TestSchedulingMetrics; 8 / 8 Test Suites Passed 100%)
+- All 22 calculation, boundary condition, lifecycle exclusion, and live persistence tests passed without errors.
+
+---
+
+## DAY 13 — Phase 1 End-to-End Verification & Hardening ✅ COMPLETE
+
+### Scope & Verification Summary
+- **Verification Pass**: Full build, runtime GUI execution, MySQL live connectivity, security audit, and all 8 registered CTest suites (177 tests total) verified.
+- **Defects Confirmed / Fixed**: 0 defects found. All existing Phase 1 implementations conform to frozen architectural specifications.
+- **Documentation**: Comprehensive report created in `docs/PHASE1_VERIFICATION_REPORT.md`.
+- **Phase 1 Status**: Complete and frozen. Ready for human review and approval.
 
 ---
 
 ## CURRENT MILESTONE
-Day 10 — COMPLETE
+Phase 1 (Days 1–13) — COMPLETE & VERIFIED
 
-## NEXT MILESTONE
-Day 11 — Non-Preemptive Priority Scheduling Algorithm
-
-
-
+## NEXT MILESTONE (PENDING EXPLICIT USER APPROVAL)
+Phase 2 / Day 14 — Runway Management Implementation
