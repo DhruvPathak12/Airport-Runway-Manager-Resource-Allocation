@@ -734,8 +734,56 @@ All 6 CTest suites pass 100%:
 
 ---
 
+## DAY 14 — Runway Management Implementation ✅ COMPLETE
+
+### Files Created/Modified
+- `src/models/Runway.h` (updated — mapped to MySQL `runways` schema (`runway_id`, `runway_number`, `runway_type`, `status`), added enums `RunwayStatus`, `RunwayType`, validation, normalization, and string conversion helpers)
+- `src/services/ApplicationService.h` (updated — declared `getAllRunways`, `getRunwayById`, `getRunwayByNumber`, `updateRunwayStatus`, `setRunwayMaintenanceStatus`, `createRunway`, `updateRunway`, and `runwaysChanged` signal)
+- `src/services/ApplicationService.cpp` (updated — implemented runway querying with active assignment joining, role-based authorization for Admin/Operator, parameterized SQL, and error reporting)
+- `ui/RunwayDialog.h` (NEW — modal dialog for runway details, creation, and maintenance toggle with role enforcement)
+- `ui/RunwayDialog.cpp` (NEW — dialog implementation with validation and permission checks)
+- `ui/RunwaysView.h` (NEW — comprehensive runway management view with status badges, search filter, and maintenance controls)
+- `ui/RunwaysView.cpp` (NEW — view implementation interacting strictly with ApplicationService)
+- `ui/MainWindow.h` (updated — added `RunwaysView* m_runwaysView` and `refreshRunways` slot)
+- `ui/MainWindow.cpp` (updated — integrated `RunwaysView` at page index 3 and wired up navigation/permissions)
+- `tests/TestRunwayManagement.cpp` (NEW — 25 unit and integration tests covering model validation, RBAC, and live MySQL operations)
+- `CMakeLists.txt` (updated — included runway UI files in `SmartATC` and registered `TestRunwayManagement` test executable)
+- `scripts/deploy_runtime.ps1` (updated — added `Qt6Test.dll` deployment to resolve Windows runtime error `0xc0000135`)
+- `PROJECT_STATUS.md` (updated — documented Day 14 completion)
+- `docs/DAY14_RUNWAY_MANAGEMENT_REPORT.md` (NEW — comprehensive Day 14 report)
+
+### Architecture Established
+- **Model**: `Runway` model rigorously validates runway numbers (1–10 chars), status (`Available`, `Occupied`, `Maintenance`), and types (`Landing`, `Takeoff`, `Both`).
+- **Application Service Layer**: Single point of truth for business logic. Enforces RBAC permissions:
+  - `Admin`: Full runway administration (view, create, modify, toggle maintenance).
+  - `Airport Operator`: Operational status viewing and maintenance toggling (`setRunwayMaintenanceStatus`).
+  - `ATC`: Operational status viewing only.
+- **Database Layer**: All operations use parameterized SQL queries against MySQL `smartatc.runways` table. Read queries join `runway_assignments` and `flights` to display current assigned flight information without implementing future allocation algorithms.
+- **GUI Layer**: Integrated `RunwaysView` into `MainWindow` navigation stack at index 3. Displays status badges with clear text labels, live counts, search/filter controls, and role-appropriate action buttons.
+- **OS Resource Foundation**: Established runway as a shared operating system resource with distinct availability states (`Available`, `Occupied`, `Maintenance`).
+
+### Automated Test Results (25 / 25 Passed in TestRunwayManagement; 9 / 9 Test Suites Passed 100%)
+- All 9 CTest suites pass 100% (202 total tests across suite):
+  1. `TestDatabaseConnectivity`: Passed
+  2. `TestAuthAndRBAC`: Passed
+  3. `TestFlightManagement`: Passed
+  4. `TestAircraftManagement`: Passed
+  5. `TestProcessModel`: Passed
+  6. `TestReadyQueueAndProcessStates`: Passed
+  7. `TestPriorityScheduler`: Passed
+  8. `TestSchedulingMetrics`: Passed
+  9. `TestRunwayManagement`: Passed (25/25 tests passed)
+
+### Scope Boundaries Confirmed (What was NOT implemented)
+- No flight-to-runway allocation algorithm or priority scheduling tie-ins (Day 15).
+- No dynamic emergency priority adjustments (Day 16).
+- No mutual exclusion, mutexes, condition variables, or critical section locks (Days 19–20).
+- No MySQL transaction management, COMMIT/ROLLBACK, or ACID guarantees (Days 21–22).
+
+---
+
 ## CURRENT MILESTONE
-Phase 1 (Days 1–13) — COMPLETE & VERIFIED
+Phase 2 / Day 14 — Runway Management Implementation — COMPLETE & VERIFIED
 
 ## NEXT MILESTONE (PENDING EXPLICIT USER APPROVAL)
-Phase 2 / Day 14 — Runway Management Implementation
+Phase 2 / Day 15 — Runway Resource Allocation Algorithm

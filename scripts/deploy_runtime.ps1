@@ -61,7 +61,7 @@ function Deploy-File([string]$Src, [string]$DstDir) {
 
 # -- 1. Core Qt DLLs ----------------------------------------------------------
 Write-Host "Deploying Qt runtime DLLs..." -ForegroundColor Yellow
-$qtDlls = @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "Qt6Sql.dll")
+$qtDlls = @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "Qt6Sql.dll", "Qt6Test.dll")
 foreach ($dll in $qtDlls) { Deploy-File (Join-Path $QtBin $dll) $BuildDir }
 
 # -- 2. MinGW runtime DLLs ----------------------------------------------------

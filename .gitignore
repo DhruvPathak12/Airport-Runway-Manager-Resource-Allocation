@@ -5,6 +5,8 @@
 
 # --- Database credentials — NEVER commit this file ---
 db.conf
+cradential.txt
+*credential*.txt
 
 # --- CMake build output ---
 build/

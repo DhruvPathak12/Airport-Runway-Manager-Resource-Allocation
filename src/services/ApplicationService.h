@@ -9,6 +9,7 @@
 #include "models/Flight.h"
 #include "models/Aircraft.h"
 #include "models/Process.h"
+#include "models/Runway.h"
 #include "scheduler/ReadyQueue.h"
 #include "scheduler/Scheduler.h"
 
@@ -116,6 +117,45 @@ public:
      * Allowed only for Airport Operator role.
      */
     bool setRunwayMaintenanceStatus(int runwayId, bool inMaintenance, QString *outError = nullptr);
+
+    // ── Runway Management Methods (Day 14) ───────────────────────────────────
+    /**
+     * @brief Fetches all runways, optionally filtered by search text and status.
+     * Allowed for: Admin, ATC, Airport Operator (page:Runways).
+     */
+    QList<Models::Runway> getAllRunways(const QString &searchFilter = QString(),
+                                        const QString &statusFilter = QString(),
+                                        QString *outError = nullptr);
+
+    /**
+     * @brief Fetches an individual runway by its ID.
+     * Allowed for: Admin, ATC, Airport Operator (page:Runways).
+     */
+    bool getRunwayById(int runwayId, Models::Runway &outRunway, QString *outError = nullptr);
+
+    /**
+     * @brief Fetches an individual runway by its unique number designation (e.g. "09L").
+     * Allowed for: Admin, ATC, Airport Operator (page:Runways).
+     */
+    bool getRunwayByNumber(const QString &runwayNumber, Models::Runway &outRunway, QString *outError = nullptr);
+
+    /**
+     * @brief Updates operational/maintenance status of a runway.
+     * Enforces RBAC: Airport Operator (action:RunwayMaintenance) or Admin.
+     */
+    bool updateRunwayStatus(int runwayId, const QString &newStatus, QString *outError = nullptr);
+
+    /**
+     * @brief Creates a new runway record in MySQL with full validation.
+     * Allowed only for Admin role.
+     */
+    bool createRunway(const Models::Runway &runway, QString *outError = nullptr);
+
+    /**
+     * @brief Updates an existing runway record in MySQL.
+     * Allowed for: Admin (full update) or Airport Operator (status/maintenance).
+     */
+    bool updateRunway(const Models::Runway &runway, QString *outError = nullptr);
 
     // ── Flight Management Methods (Day 7) ────────────────────────────────────
     /**
@@ -353,6 +393,11 @@ signals:
      * @brief Emitted when processes are created or updated in the scheduling queue.
      */
     void processesChanged();
+
+    /**
+     * @brief Emitted when runway records or statuses are updated.
+     */
+    void runwaysChanged();
 
 private:
     Scheduler       *m_scheduler       = nullptr;
