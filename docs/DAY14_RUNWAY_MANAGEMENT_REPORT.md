@@ -152,22 +152,78 @@ No Day 15–29 features (such as runway allocation algorithms, mutual exclusion 
 
 ### 1. Build Verification
 - **Command:** `cmake --build build`
-- **Toolchain:** MinGW 13.1.0 64-bit, CMake 3.19+, Qt 6.11.2
+- **Toolchain:** MinGW GCC 13.1.0 64-bit (`C:\Qt\Tools\mingw1310_64\bin\g++.exe`), CMake 3.19+, Ninja, Qt 6.11.2 MinGW 64-bit (`C:\Qt\6.11.2\mingw_64`)
 - **Result:** Success (Exit code: 0).
 - **Artifacts:**
-  - `build/SmartATC.exe`
-  - `build/TestRunwayManagement.exe`
+  - `build/SmartATC.exe` (14,835,041 bytes)
+  - `build/TestRunwayManagement.exe` (7,437,374 bytes)
 
-### 2. Runtime Deployment & Execution
-- **Deployment Command:** `powershell -ExecutionPolicy Bypass -File scripts\deploy_runtime.ps1`
-- **Result:** 11 runtime binaries deployed into `build/`, including `Qt6Core.dll`, `Qt6Gui.dll`, `Qt6Widgets.dll`, `Qt6Sql.dll`, `Qt6Test.dll`, MinGW runtime DLLs, and `sqldrivers/qsqlmysql.dll`.
-- **Application Execution:** `build/SmartATC.exe` launched directly. Process ran successfully without missing DLL errors or application crashes.
+### 2. Qt Kit & Dependency Verification
+- **Expected Qt Installation:** `C:\Qt\6.11.2\mingw_64`
+- **Kit Architecture:** MinGW 64-bit (GCC 13.1.0 compatible)
+- **`Qt6Sql.dll` Verification:**
+  - Path: `C:\Qt\6.11.2\mingw_64\bin\Qt6Sql.dll` (Size: 337,240 bytes, Date: 2026-08-13)
+  - Kit match: Matches `Qt6Sql_DIR` from `build/CMakeCache.txt` (`C:/Qt/6.11.2/mingw_64/lib/cmake/Qt6Sql`).
+  - Isolated from Qt Creator internal binary (`C:\Qt\Tools\QtCreator\bin\Qt6Sql.dll`, size 311,608 bytes), preventing toolchain mixing.
+- **Direct Application DLL Imports (`C:\Qt\Tools\mingw1310_64\bin\objdump.exe -p build\SmartATC.exe`):**
+  - `Qt6Core.dll`
+  - `Qt6Gui.dll`
+  - `Qt6Sql.dll` *(direct dependency of SmartATC.exe)*
+  - `Qt6Widgets.dll`
+  - `libgcc_s_seh-1.dll`
+  - `libstdc++-6.dll`
+  - `KERNEL32.dll`
+  - `msvcrt.dll`
+- **SQL Plugin DLL Imports (`objdump.exe -p build\sqldrivers\qsqlmysql.dll`):**
+  - `libmysql.dll` *(MySQL C client library)*
+  - `Qt6Core.dll`
+  - `Qt6Sql.dll`
+  - `libstdc++-6.dll`
 
-### 3. Live MySQL Verification
-- **Host:** 127.0.0.1:3306
-- **Database:** `smartatc`
-- **Server Version:** MySQL 8.0.46
-- **Result:** Database connection established; existing runway records (`09L/27R`, `09R/27L`, `14/32`) loaded and verified.
+### 3. Runtime Deployment (`scripts/deploy_runtime.ps1`)
+- **Execution Command:** `powershell -ExecutionPolicy Bypass -File scripts\deploy_runtime.ps1`
+- **Deployment Status:** 12 runtime files successfully deployed to `build/`:
+  - Core Qt DLLs: `Qt6Core.dll`, `Qt6Gui.dll`, `Qt6Widgets.dll`, `Qt6Sql.dll`, `Qt6Test.dll` (from `C:\Qt\6.11.2\mingw_64\bin\`)
+  - MinGW Runtime DLLs: `libgcc_s_seh-1.dll`, `libstdc++-6.dll`, `libwinpthread-1.dll` (from `C:\Qt\Tools\mingw1310_64\bin\`)
+  - Qt Platform Plugin: `platforms\qwindows.dll` (from `C:\Qt\6.11.2\mingw_64\plugins\platforms\`)
+  - Qt SQL Driver Plugins: `sqldrivers\qsqlmysql.dll`, `sqldrivers\qsqlite.dll` (from `C:\Qt\6.11.2\mingw_64\plugins\sqldrivers\`)
+  - MySQL Client Library: `libmysql.dll` (deployed from `C:\Qt\6.11.2\mingw_64\bin\libmysql.dll`, size 7,001,216 bytes)
+
+### 4. Clean Launch & Live GUI Verification (Isolated Environment)
+- **Launch Environment:** Clean Windows PowerShell session with **zero Qt or MinGW paths** on `$env:PATH`. Executable launched directly to replicate Windows File Explorer double-click behavior.
+- **Exact Executable Path:** `D:\Projects\Airport Runway Manager &Resource Allocation\SmartATC\build\SmartATC.exe`
+- **Working Directory:** `D:\Projects\Airport Runway Manager &Resource Allocation\SmartATC\build`
+- **Launch Command:**
+  ```powershell
+  $proc = Start-Process -FilePath "D:\Projects\Airport Runway Manager &Resource Allocation\SmartATC\build\SmartATC.exe" -WorkingDirectory "D:\Projects\Airport Runway Manager &Resource Allocation\SmartATC\build" -PassThru
+  ```
+- **Observed Results:**
+  - **Process Alive:** Started cleanly, PID captured, process alive and responding (`Responding: True`).
+  - **No Missing-DLL Dialog:** Windows system dialog `Qt6Sql.dll was not found` did not appear.
+  - **Window Visibility & Properties:**
+    - Window Class: `Qt6112QWindowIcon`
+    - Window Title: `Smart Air Traffic Control Management System`
+    - Dimensions: 1375 x 900 (onscreen)
+  - **Loaded Modules Verification (via `Get-Process.Modules`):**
+    All required modules loaded exclusively from `build\`:
+    - `build\Qt6Core.dll`
+    - `build\Qt6Gui.dll`
+    - `build\Qt6Sql.dll`
+    - `build\Qt6Widgets.dll`
+    - `build\platforms\qwindows.dll`
+    - `build\sqldrivers\qsqlmysql.dll`
+    - `build\libmysql.dll`
+    - `build\libgcc_s_seh-1.dll`, `build\libstdc++-6.dll`, `build\libwinpthread-1.dll`
+  - **Live MySQL Connectivity:**
+    - Connected to MySQL 8.0.46 Community on `127.0.0.1:3306`, database `smartatc`.
+    - GUI status indicator verified: `Connected (Database: smartatc, Host: 127.0.0.1:3306)`.
+    - Initialization logs confirmed read-only connectivity test: `Server Version: "8.0.46" Active Database: "smartatc"`.
+  - **GUI Interaction & Navigation Verification:**
+    - Login interface (`LoginView`) loaded with `Username`, `Password`, and `Log In` button.
+    - Automated login as `admin_demo` authenticated successfully against live MySQL database.
+    - Main shell transitioned to authenticated state: `System Administrator (Demo) (Admin)`, active `Logout` button.
+    - Sidebar navigation functional: `Dashboard`, `Flights`, `Aircraft`, `Runways`, `Scheduling`, `Transactions`, `Logs`, `Users`.
+    - Selected `Runways` navigation item: `RunwaysView` active, displaying runway statistics, filters, and records (`09L/27R`, `09R/27L`, `14/32`).
 
 ---
 
@@ -220,17 +276,38 @@ All 9 test suites were executed via CTest:
 
 ## H. Defects Found and Fixed
 
-### Defect 1: Missing `Qt6Test.dll` Causing CTest `0xc0000135` Crash
-- **Reproduction:** Running `ctest --test-dir build` failed across all test executables with Windows exit code `0xc0000135` (STATUS_DLL_NOT_FOUND).
-- **Root Cause:** `scripts/deploy_runtime.ps1` deployed `Qt6Core.dll`, `Qt6Gui.dll`, `Qt6Widgets.dll`, and `Qt6Sql.dll`, but omitted `Qt6Test.dll`, which is dynamically linked by all QtTest executables.
-- **Fix:** Added `Qt6Test.dll` to the deployment array in `scripts/deploy_runtime.ps1`.
-- **Retest Result:** All 9 test suites run and pass without DLL errors.
+### Defect 1: Original Windows Startup Error (`Qt6Sql.dll was not found`)
+- **Reproduction / Error:**
+  When launching `SmartATC.exe` from Windows File Explorer or a clean terminal outside Qt Creator, Windows halted with the system dialog:
+  `The code execution cannot proceed because Qt6Sql.dll was not found. Reinstalling the program may fix this problem.`
+- **Root Cause:**
+  `SmartATC.exe` directly links `Qt6Sql.dll` (verified via `objdump -p build\SmartATC.exe`). Windows dynamic-link loader requires imported DLLs to be in the application directory or on the system `PATH`. The build output folder (`build\`) initially contained only the compiled executable, and the Qt kit directory (`C:\Qt\6.11.2\mingw_64\bin`) was not on the system `PATH`.
+- **Fix:**
+  1. Identified that `Qt6Sql.dll` exists in `C:\Qt\6.11.2\mingw_64\bin\Qt6Sql.dll` (size 337,240 bytes) belonging to the exact MinGW 64-bit kit.
+  2. Created `scripts/deploy_runtime.ps1` to deploy all required Qt runtime dependencies directly into `build\`: `Qt6Core.dll`, `Qt6Gui.dll`, `Qt6Widgets.dll`, `Qt6Sql.dll`, MinGW runtimes (`libgcc_s_seh-1.dll`, `libstdc++-6.dll`, `libwinpthread-1.dll`), platform plugins (`platforms\qwindows.dll`), and SQL driver plugins (`sqldrivers\qsqlmysql.dll`, `sqldrivers\qsqlite.dll`).
+- **Retest & Verification:**
+  - Ran clean launch test of `build\SmartATC.exe` in an isolated environment with Qt stripped from `$env:PATH`.
+  - Process started cleanly without any missing-DLL dialog (PID captured, `Responding: True`).
+  - Loaded modules verified via `Get-Process`: `build\Qt6Sql.dll` loaded directly from the application folder.
+  - GUI initialized and MySQL connectivity established with status `Connected (Database: smartatc, Host: 127.0.0.1:3306)`.
 
-### Defect 2: Model Inconsistency with Database Schema
+### Defect 2: Missing `Qt6Test.dll` Causing CTest `0xc0000135` Crash
+- **Reproduction:** Running `ctest --test-dir build` failed across test executables with Windows exit code `0xc0000135` (STATUS_DLL_NOT_FOUND).
+- **Root Cause:** The initial deployment script deployed core application DLLs (`Qt6Core.dll`, `Qt6Gui.dll`, `Qt6Widgets.dll`, `Qt6Sql.dll`), but omitted `Qt6Test.dll`, which is dynamically linked by all QtTest test suites.
+- **Fix:** Added `Qt6Test.dll` to the deployment array in `scripts/deploy_runtime.ps1`.
+- **Retest Result:** All 9 test suites run and pass without DLL errors (202 / 202 tests passed).
+
+### Defect 3: Model Inconsistency with Database Schema
 - **Reproduction:** The original placeholder `Runway` model defined fields `name`, `lengthMeters`, and string `status`, whereas MySQL table `runways` defined `runway_id`, `runway_number`, `runway_type`, and enum `status`.
 - **Root Cause:** Initial Day 2 model skeleton did not reflect the refined Day 3 relational schema.
 - **Fix:** Redesigned `Runway` struct with `runwayId`, `runwayNumber`, `runwayType`, and `status`, while keeping `name` and `lengthMeters` as compatibility accessors.
 - **Retest Result:** All unit tests and database mappings pass seamlessly.
+
+### Defect 4: Deployment Script Omission of `libmysql.dll`
+- **Reproduction:** On a clean checkout or clean build directory where `build\` was purged, running `deploy_runtime.ps1` copied `sqldrivers\qsqlmysql.dll` but omitted `libmysql.dll`, causing QMYSQL driver loading to fail dynamically.
+- **Root Cause:** `qsqlmysql.dll` has a direct runtime dependency on `libmysql.dll` (`objdump -p build\sqldrivers\qsqlmysql.dll` lists `DLL Name: libmysql.dll`).
+- **Fix:** Enhanced `scripts/deploy_runtime.ps1` to locate and deploy `libmysql.dll` from the Qt kit (`C:\Qt\6.11.2\mingw_64\bin\libmysql.dll`) or MySQL Server directory into `build\`.
+- **Retest Result:** Verified deployment copies 12 runtime files; live MySQL connection succeeds cleanly in standalone GUI run.
 
 ---
 
@@ -262,7 +339,7 @@ All 9 test suites were executed via CTest:
 | 5 | Role-Based Access Control | **PASS** | Admin, Operator, and ATC roles strictly enforced in service layer and UI. |
 | 6 | Input Validation & Error Handling | **PASS** | Empty numbers, invalid statuses, and duplicates rejected with safe messages. |
 | 7 | Automated Tests | **PASS** | 25/25 in `TestRunwayManagement`; 202/202 passed across all 9 CTest suites. |
-| 8 | Build and Runtime Verification | **PASS** | Clean CMake build; `SmartATC.exe` launched and confirmed alive; MySQL verified. |
+| 8 | Build and Runtime Verification | **PASS** | Clean CMake build; `SmartATC.exe` launched cleanly without `Qt6Sql.dll` error; Qt, MinGW, platform, and QMYSQL runtime dependencies verified; live MySQL verified. |
 | 9 | Preserved Existing Functionality | **PASS** | 0 regressions across Days 1–13 features (Auth, Flights, Aircraft, Scheduler, Metrics). |
 | 10 | Scope Adherence | **PASS** | No Day 15+ features implemented. |
 

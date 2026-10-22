@@ -82,6 +82,25 @@ New-Item -ItemType Directory -Force -Path $sqlDir | Out-Null
 Deploy-File (Join-Path $QtPlugins "sqldrivers\qsqlmysql.dll") $sqlDir
 Deploy-File (Join-Path $QtPlugins "sqldrivers\qsqlite.dll")   $sqlDir
 
+# -- 5. MySQL client library (required by qsqlmysql.dll) -----------------------
+Write-Host "Deploying MySQL client library..." -ForegroundColor Yellow
+$mysqlDllCandidates = @(
+    (Join-Path $QtBin "libmysql.dll"),
+    "C:\Program Files\MySQL\MySQL Server 8.0\lib\libmysql.dll",
+    "C:\Program Files\MySQL\MySQL Router 8.0\lib\libmysql.dll"
+)
+$mysqlDeployed = $false
+foreach ($candidate in $mysqlDllCandidates) {
+    if (Test-Path $candidate) {
+        Deploy-File $candidate $BuildDir
+        $mysqlDeployed = $true
+        break
+    }
+}
+if (-not $mysqlDeployed -and -not (Test-Path (Join-Path $BuildDir "libmysql.dll"))) {
+    Write-Warning "libmysql.dll not found in Qt bin or MySQL installation paths. QMYSQL plugin may fail to load."
+}
+
 # -- Summary ------------------------------------------------------------------
 Write-Host ""
 Write-Host "Deployment complete: $copied file(s) copied." -ForegroundColor Cyan
