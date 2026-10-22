@@ -42,6 +42,8 @@ private slots:
     void onAddRunwayClicked();
     void onEditRunwayClicked();
     void onTableDoubleClicked(int row, int column);
+    void onAllocateClicked();
+    void onReleaseClicked();
 
 private:
     void setupUi();
@@ -54,6 +56,8 @@ private:
     QLineEdit      *m_searchEdit           = nullptr;
     QComboBox      *m_statusFilter         = nullptr;
     QPushButton    *m_refreshButton        = nullptr;
+    QPushButton    *m_allocateButton       = nullptr;
+    QPushButton    *m_releaseButton        = nullptr;
     QPushButton    *m_toggleMaintenanceBtn = nullptr;
     QPushButton    *m_addButton            = nullptr;
     QPushButton    *m_editButton           = nullptr;

@@ -2,6 +2,7 @@
 
 #include "services/ApplicationService.h"
 #include "ui/RunwayDialog.h"
+#include "ui/RunwayAllocationDialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -124,6 +125,54 @@ void RunwaysView::setupUi()
     toolbarLayout->addWidget(m_refreshButton);
 
     toolbarLayout->addStretch();
+
+    // Allocate Flight Button (ATC only)
+    m_allocateButton = new QPushButton(QStringLiteral("🛬 Allocate Flight"), this);
+    m_allocateButton->setEnabled(false);
+    m_allocateButton->setStyleSheet(R"(
+        QPushButton {
+            background-color: #059669;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        QPushButton:hover {
+            background-color: #047857;
+        }
+        QPushButton:disabled {
+            background-color: #cbd5e1;
+            color: #94a3b8;
+        }
+    )");
+    connect(m_allocateButton, &QPushButton::clicked, this, &RunwaysView::onAllocateClicked);
+    toolbarLayout->addWidget(m_allocateButton);
+
+    // Release Runway Button (ATC, Operator, Admin)
+    m_releaseButton = new QPushButton(QStringLiteral("🛫 Release Runway"), this);
+    m_releaseButton->setEnabled(false);
+    m_releaseButton->setStyleSheet(R"(
+        QPushButton {
+            background-color: #0284c7;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        QPushButton:hover {
+            background-color: #0369a1;
+        }
+        QPushButton:disabled {
+            background-color: #cbd5e1;
+            color: #94a3b8;
+        }
+    )");
+    connect(m_releaseButton, &QPushButton::clicked, this, &RunwaysView::onReleaseClicked);
+    toolbarLayout->addWidget(m_releaseButton);
 
     // Toggle Maintenance Button (Airport Operator & Admin)
     m_toggleMaintenanceBtn = new QPushButton(QStringLiteral("🛠 Set Maintenance"), this);
@@ -295,22 +344,29 @@ void RunwaysView::updatePermissions()
 
     const Session &session = m_service->currentSession();
     bool canMaintenance = session.hasPermission(QStringLiteral("action:RunwayMaintenance"));
+    bool canAllocate = session.hasPermission(QStringLiteral("action:RunwayAllocation"));
     bool isAdmin = session.isAdmin();
 
     m_addButton->setVisible(isAdmin);
     m_editButton->setVisible(isAdmin || canMaintenance);
     m_toggleMaintenanceBtn->setVisible(canMaintenance || isAdmin);
+    m_allocateButton->setVisible(canAllocate);
+    m_releaseButton->setVisible(canAllocate || canMaintenance || isAdmin);
 
     if (isAdmin) {
         m_permNotice->setText(QStringLiteral("👑 Admin Mode"));
         m_permNotice->setStyleSheet("background-color: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 600; padding: 6px 12px; border-radius: 12px; border: 1px solid #bfdbfe;");
+        m_permNotice->show();
+    } else if (canAllocate) {
+        m_permNotice->setText(QStringLiteral("✈ ATC Controller Mode (Runway Allocation Authorized)"));
+        m_permNotice->setStyleSheet("background-color: #dcfce7; color: #166534; font-size: 11px; font-weight: 600; padding: 6px 12px; border-radius: 12px; border: 1px solid #bbf7d0;");
         m_permNotice->show();
     } else if (canMaintenance) {
         m_permNotice->setText(QStringLiteral("🛠 Operator Mode (Maintenance Authorized)"));
         m_permNotice->setStyleSheet("background-color: #fef3c7; color: #92400e; font-size: 11px; font-weight: 600; padding: 6px 12px; border-radius: 12px; border: 1px solid #fde68a;");
         m_permNotice->show();
     } else {
-        m_permNotice->setText(QStringLiteral("👁 ATC View / Monitor Mode"));
+        m_permNotice->setText(QStringLiteral("👁 Monitor Mode"));
         m_permNotice->setStyleSheet("background-color: #f1f5f9; color: #475569; font-size: 11px; font-weight: 600; padding: 6px 12px; border-radius: 12px; border: 1px solid #e2e8f0;");
         m_permNotice->show();
     }
@@ -463,9 +519,31 @@ void RunwaysView::onSelectionChanged()
     bool hasSelection = (rw != nullptr);
 
     bool canMaintenance = m_service && m_service->currentSession().hasPermission(QStringLiteral("action:RunwayMaintenance"));
-    bool isAdmin = m_service && m_service->currentSession().isAdmin();
+    bool canAllocate    = m_service && m_service->currentSession().hasPermission(QStringLiteral("action:RunwayAllocation"));
+    bool canRelease     = m_service && (m_service->currentSession().hasPermission(QStringLiteral("action:RunwayAllocation")) ||
+                                       m_service->currentSession().hasPermission(QStringLiteral("action:RunwayMaintenance")) ||
+                                       m_service->currentSession().isAdmin());
+    bool isAdmin        = m_service && m_service->currentSession().isAdmin();
 
     m_editButton->setEnabled(hasSelection && (isAdmin || canMaintenance));
+
+    // Allocation button is active for ATC
+    if (canAllocate) {
+        if (hasSelection) {
+            m_allocateButton->setEnabled(rw->isAvailable());
+        } else {
+            m_allocateButton->setEnabled(true);
+        }
+    } else {
+        m_allocateButton->setEnabled(false);
+    }
+
+    // Release button is enabled when an Occupied runway is selected
+    if (canRelease && hasSelection && rw->isOccupied()) {
+        m_releaseButton->setEnabled(true);
+    } else {
+        m_releaseButton->setEnabled(false);
+    }
 
     if (hasSelection && (canMaintenance || isAdmin)) {
         m_toggleMaintenanceBtn->setEnabled(true);
@@ -608,4 +686,58 @@ void RunwaysView::onTableDoubleClicked(int row, int column)
     Q_UNUSED(row)
     Q_UNUSED(column)
     onEditRunwayClicked();
+}
+
+void RunwaysView::onAllocateClicked()
+{
+    Models::Runway *rw = getSelectedRunway();
+    int preselectedId = (rw && rw->isAvailable()) ? rw->id : 0;
+    RunwayAllocationDialog dialog(m_service, preselectedId, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        refreshRunways();
+    }
+}
+
+void RunwaysView::onReleaseClicked()
+{
+    Models::Runway *rw = getSelectedRunway();
+    if (!rw) {
+        return;
+    }
+
+    if (!rw->isOccupied()) {
+        QMessageBox::information(
+            this,
+            QStringLiteral("Release Runway"),
+            QStringLiteral("Runway %1 is not currently Occupied.").arg(rw->runwayNumber)
+        );
+        return;
+    }
+
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        QStringLiteral("Release Runway Resource"),
+        QStringLiteral("Are you sure you want to release Runway %1 from its active flight allocation?\n"
+                       "The runway status will return to Available.")
+            .arg(rw->runwayNumber),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+
+    QString error;
+    bool ok = m_service->releaseRunway(rw->id, &error);
+    if (!ok) {
+        QMessageBox::warning(
+            this,
+            QStringLiteral("Release Failed"),
+            QStringLiteral("Failed to release runway %1:\n%2").arg(rw->runwayNumber, error)
+        );
+        return;
+    }
+
+    refreshRunways();
 }

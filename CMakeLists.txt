@@ -40,6 +40,8 @@ set(APP_SOURCES
     ui/AircraftView.cpp
     ui/RunwayDialog.h
     ui/RunwayDialog.cpp
+    ui/RunwayAllocationDialog.h
+    ui/RunwayAllocationDialog.cpp
     ui/RunwaysView.h
     ui/RunwaysView.cpp
 
@@ -69,6 +71,7 @@ set(APP_SOURCES
     src/models/Flight.h
     src/models/Aircraft.h
     src/models/Runway.h
+    src/models/RunwayAssignment.h
     src/models/User.h
     src/models/Session.h
     src/models/Session.cpp
@@ -412,3 +415,42 @@ target_include_directories(TestRunwayManagement
 )
 
 add_test(NAME TestRunwayManagement COMMAND TestRunwayManagement)
+
+add_executable(TestRunwayResourceAllocation
+    tests/TestRunwayResourceAllocation.cpp
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cpp
+    src/models/Session.h
+    src/models/Session.cpp
+    src/models/Flight.h
+    src/models/Aircraft.h
+    src/models/Runway.h
+    src/models/RunwayAssignment.h
+    src/models/Process.h
+    src/models/Process.cpp
+    src/services/ApplicationService.h
+    src/services/ApplicationService.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/scheduler/Scheduler.h
+    src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
+    src/resource/ResourceManager.h
+    src/resource/ResourceManager.cpp
+)
+
+target_link_libraries(TestRunwayResourceAllocation
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestRunwayResourceAllocation
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestRunwayResourceAllocation COMMAND TestRunwayResourceAllocation)

@@ -782,8 +782,61 @@ All 6 CTest suites pass 100%:
 
 ---
 
+## DAY 15 — Runway Resource Allocation ✅ COMPLETE
+
+### Files Created/Modified
+- `src/models/RunwayAssignment.h` (NEW — mapped to MySQL `runway_assignments` schema, added enums `AssignmentStatus`, `AllocationResult`, helper `allocationResultToString()`, and active/released state accessors)
+- `src/services/ApplicationService.h` (updated — declared `allocateRunway`, `allocateRunwayResource`, `releaseRunway`, `releaseRunwayResource`, `getEligibleFlightsForRunwayAllocation`, `getAvailableRunwaysForAllocation`, `getActiveAssignmentForRunway`, and `getActiveAssignmentForFlight`)
+- `src/services/ApplicationService.cpp` (updated — implemented comprehensive allocation validation: checking runway existence and Available status, rejecting Occupied or Maintenance runways, verifying non-terminal flight status, rejecting conflicts and duplicate active assignments, verifying scheduling queue state, inserting to `runway_assignments`, updating runway to Occupied, updating flight to Cleared, inserting audit logs to `operation_logs`, and emitting UI notification signals)
+- `src/resource/ResourceManager.cpp` (updated — hooked `runwayStatus` query to MySQL via DatabaseManager, added clear scope annotations for Days 19/21)
+- `ui/RunwayAllocationDialog.h` (NEW — modal dialog interface for runway allocation with runway and flight selectors)
+- `ui/RunwayAllocationDialog.cpp` (NEW — dialog implementation with live available runway dropdown, eligible flight table with emergency highlighting, operational compatibility checks, and validation error presentation)
+- `ui/RunwaysView.h` (updated — added `m_allocateButton`, `m_releaseButton`, and slots `onAllocateClicked()`, `onReleaseClicked()`)
+- `ui/RunwaysView.cpp` (updated — integrated Allocate Flight and Release Runway buttons in toolbar, added action-level RBAC enforcement for ATC, and wired modal allocation and release confirmation workflows)
+- `tests/TestRunwayResourceAllocation.cpp` (NEW — 18 unit and integration tests covering model validation, RBAC at service boundary, live MySQL allocation lifecycle, conflict rejections, terminal status rejection, type compatibility, and runway release lifecycle)
+- `CMakeLists.txt` (updated — registered `RunwayAllocationDialog.h/.cpp`, `RunwayAssignment.h`, and `TestRunwayResourceAllocation` executable and CTest test)
+- `docs/DAY15_RUNWAY_RESOURCE_ALLOCATION_REPORT.md` (NEW — comprehensive Day 15 verification report)
+- `PROJECT_STATUS.md` (updated — marked Day 15 complete)
+
+### Architecture Established
+- **Model**: `RunwayAssignment` entity capturing temporal assignment data (`assigned_at`, `released_at`, `status = 'Active'|'Released'|'Cancelled'`, `assigned_by`, `runway_id`, `flight_id`).
+- **Application Service Layer**: Enforces action-level RBAC:
+  - `action:RunwayAllocation`: Strictly restricted to ATC role. Rejects unauthenticated calls, Admins, and Operators.
+  - `releaseRunway`: Permitted for ATC controllers, Airport Operators, and Admins.
+- **Validation Engine**:
+  1. Runway must exist and be in `Available` status. `Occupied` or `Maintenance` runways are rejected.
+  2. Runway must not already possess an active assignment in `runway_assignments`.
+  3. Flight must exist and be in non-terminal status (`Scheduled`, `Taxiing`, `Cleared`). Terminal statuses (`Landed`, `Departed`, `Cancelled`) are rejected.
+  4. Runway operational type compatibility enforced (Landing runways only accept Arrival flights; Takeoff runways only accept Departure flights).
+  5. Flight must not already possess an active assignment on any runway.
+  6. Flight process in `scheduling_queue` must not be in `Completed` state.
+- **Database Layer**: All operations use parameterized SQL queries across `runway_assignments`, `runways`, `flights`, and `operation_logs`. Audit logging records `RUNWAY_ASSIGN` and `RUNWAY_RELEASE` events.
+- **GUI Layer**: Integrated `RunwayAllocationDialog` accessible via "🛬 Allocate Flight" button in `RunwaysView`. Shows real-time available runways, filterable compatible flights, and status feedback. "🛫 Release Runway" safely returns occupied runways to `Available` mode with user confirmation.
+
+### Automated Test Results (18 / 18 Passed in TestRunwayResourceAllocation; 10 / 10 Test Suites Passed 100%)
+- All 10 CTest suites pass 100% (220 total tests across suite):
+  1. `TestDatabaseConnectivity`: Passed
+  2. `TestAuthAndRBAC`: Passed
+  3. `TestFlightManagement`: Passed
+  4. `TestAircraftManagement`: Passed
+  5. `TestProcessModel`: Passed
+  6. `TestReadyQueueAndProcessStates`: Passed
+  7. `TestPriorityScheduler`: Passed
+  8. `TestSchedulingMetrics`: Passed
+  9. `TestRunwayManagement`: Passed
+  10. `TestRunwayResourceAllocation`: Passed (18/18 tests passed)
+
+### Scope Boundaries Confirmed (What was NOT implemented)
+- No dynamic emergency priority adjustments (Day 16).
+- No starvation prevention or aging algorithms (Days 17–18).
+- No mutual exclusion, mutexes, condition variables, or critical section locks (Days 19–20).
+- No MySQL multi-statement ACID transaction management (`SELECT FOR UPDATE`, `COMMIT/ROLLBACK`) (Days 21–22).
+- No multithreaded dispatching or background OS threads (Day 23).
+
+---
+
 ## CURRENT MILESTONE
-Phase 2 / Day 14 — Runway Management Implementation — COMPLETE & VERIFIED
+Phase 2 / Day 15 — Runway Resource Allocation — COMPLETE & VERIFIED
 
 ## NEXT MILESTONE (PENDING EXPLICIT USER APPROVAL)
-Phase 2 / Day 15 — Runway Resource Allocation Algorithm
+Phase 2 / Day 16 — Dynamic Emergency Priority Changes

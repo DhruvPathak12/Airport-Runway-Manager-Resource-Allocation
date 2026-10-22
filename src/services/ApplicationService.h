@@ -10,6 +10,7 @@
 #include "models/Aircraft.h"
 #include "models/Process.h"
 #include "models/Runway.h"
+#include "models/RunwayAssignment.h"
 #include "scheduler/ReadyQueue.h"
 #include "scheduler/Scheduler.h"
 
@@ -108,9 +109,53 @@ public:
 
     /**
      * @brief Triggers runway allocation with action-level RBAC enforcement.
-     * Allowed only for ATC role.
+     * Allowed only for ATC role (action:RunwayAllocation).
      */
     bool allocateRunwayResource(int runwayId, int flightId, QString *outError = nullptr);
+
+    /**
+     * @brief Allocates an available runway to an eligible flight.
+     * Enforces RBAC (action:RunwayAllocation - ATC only), validates runway availability,
+     * checks that the runway is not Occupied or in Maintenance, verifies that neither
+     * the runway nor the flight has an active assignment conflict, and persists
+     * the active assignment and status updates to MySQL.
+     *
+     * @param runwayId  Database ID of the runway to allocate.
+     * @param flightId  Database ID of the flight receiving the runway.
+     * @param outError  Optional output receiving a descriptive error message on failure.
+     * @return Models::AllocationResult code indicating granular outcome.
+     */
+    Models::AllocationResult allocateRunway(int runwayId, int flightId, QString *outError = nullptr);
+
+    /**
+     * @brief Releases an active runway allocation, returning runway status to 'Available'
+     * and marking the assignment record as 'Released'.
+     * Allowed for: ATC, Airport Operator, Admin.
+     */
+    bool releaseRunway(int runwayId, QString *outError = nullptr);
+    bool releaseRunwayResource(int runwayId, QString *outError = nullptr);
+
+    /**
+     * @brief Returns all flights eligible for runway allocation.
+     * Excludes terminal flights (Landed, Departed, Cancelled) and flights that already
+     * possess an active runway assignment. If runwayId > 0, filters by runway operation type compatibility.
+     */
+    QList<Models::Flight> getEligibleFlightsForRunwayAllocation(int runwayId = 0, QString *outError = nullptr);
+
+    /**
+     * @brief Returns all runways currently Available for flight allocation.
+     */
+    QList<Models::Runway> getAvailableRunwaysForAllocation(QString *outError = nullptr);
+
+    /**
+     * @brief Retrieves the active assignment for a given runway, if one exists.
+     */
+    bool getActiveAssignmentForRunway(int runwayId, Models::RunwayAssignment &outAssignment, QString *outError = nullptr);
+
+    /**
+     * @brief Retrieves the active assignment for a given flight, if one exists.
+     */
+    bool getActiveAssignmentForFlight(int flightId, Models::RunwayAssignment &outAssignment, QString *outError = nullptr);
 
     /**
      * @brief Sets runway maintenance status with action-level RBAC enforcement.
