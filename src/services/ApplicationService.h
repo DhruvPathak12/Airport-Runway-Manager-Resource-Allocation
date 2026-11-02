@@ -235,6 +235,35 @@ public:
      */
     bool deleteFlight(int flightId, QString *outError = nullptr);
 
+    // ── Dynamic Emergency Priority Methods (Day 16) ──────────────────────────
+    /**
+     * @brief Declares an eligible flight an emergency, dynamically elevating its effective
+     * scheduling priority to 1 (highest) while strictly preserving its original base priority.
+     * Enforces RBAC (ATC-only: action:DeclareEmergency).
+     *
+     * @param flightId Database ID of the flight.
+     * @param outError Optional output string receiving failure explanation.
+     * @return true if emergency was successfully declared and persisted.
+     */
+    bool declareEmergency(int flightId, QString *outError = nullptr);
+
+    /**
+     * @brief Clears an emergency declaration on a flight, restoring its effective priority
+     * back to its original base priority while keeping base priority intact.
+     * Enforces RBAC (ATC-only: action:DeclareEmergency).
+     *
+     * @param flightId Database ID of the flight.
+     * @param outError Optional output string receiving failure explanation.
+     * @return true if emergency was successfully cleared and persisted.
+     */
+    bool clearEmergency(int flightId, QString *outError = nullptr);
+
+    /**
+     * @brief Centralized method to dynamically alter flight emergency status in MySQL
+     * and synchronize in-memory Scheduler / ReadyQueue state.
+     */
+    bool setFlightEmergency(int flightId, bool emergency, QString *outError = nullptr);
+
     /**
      * @brief Checks if a flight can be deleted safely without foreign-key conflict.
      * Returns true if safe; false with an explanatory reason if related records exist.

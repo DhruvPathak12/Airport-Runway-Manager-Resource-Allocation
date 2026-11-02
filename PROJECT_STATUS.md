@@ -835,8 +835,57 @@ All 6 CTest suites pass 100%:
 
 ---
 
+## DAY 16 — Dynamic Emergency Priority Changes ✅ COMPLETE
+
+### Files Created/Modified
+- `src/models/Flight.h` (updated — added `effectivePriority()` query helper returning 1 if emergency, else base priority)
+- `src/models/Process.h` (updated — added `isEmergency` flag and `setEmergency(bool)` dynamically updating `effectivePriority`)
+- `src/models/Process.cpp` (updated — updated `Process::fromFlight()` to copy emergency status and calculate initial effective priority)
+- `src/models/Session.cpp` (updated — registered `action:DeclareEmergency` RBAC check restricted strictly to ATC role)
+- `src/services/ApplicationService.h` (updated — declared `declareEmergency`, `clearEmergency`, and `setFlightEmergency`)
+- `src/services/ApplicationService.cpp` (updated — implemented emergency declaration and clearance with RBAC, validation, SQL persistence, queue sync, and signal emission; updated `updateFlight` to sync effective priority on flight edits)
+- `ui/FlightsView.h` (updated — added toolbar buttons `m_declareEmergencyButton` and `m_clearEmergencyButton`, plus action slots and permission updates)
+- `ui/FlightsView.cpp` (updated — configured 11-column table layout, action button styling, confirmation dialogs, and selection state handling)
+- `tests/TestDynamicEmergencyPriority.cpp` (NEW — comprehensive 20-point test suite for priority calculation, scheduler behavior, and service authorization)
+- `CMakeLists.txt` (updated — registered `TestDynamicEmergencyPriority` target, includes, links, and CTest integration)
+- `docs/DAY16_DYNAMIC_EMERGENCY_PRIORITY_REPORT.md` (NEW — comprehensive Day 16 verification report)
+- `PROJECT_STATUS.md` (updated — marked Day 16 complete)
+
+### Architecture Established
+- **Model**: `Flight` and `Process` models centralize effective priority calculation. Base priority ($1 \le P_{base} \le 5$) is strictly preserved; emergency status asserts $P_{eff} = 1$, and clearing emergency restores $P_{eff} = P_{base}$.
+- **Application Service Layer**: Single point of truth for emergency operations. Enforces RBAC permissions:
+  - `action:DeclareEmergency`: Strictly restricted to ATC role. Rejects unauthenticated calls, Admins, and Airport Operators.
+  - Rejects terminal flight states (`Landed`, `Departed`, `Cancelled`) from declaring or clearing emergencies.
+- **Database Layer**: All operations use parameterized SQL queries across `flights` (`is_emergency`) and `scheduling_queue` (`effective_priority`). In-memory `readyQueue()` synchronization occurs upon successful persistence.
+- **Scheduler Invariant**: Non-preemptive priority dispatching strictly preserved. A `RUNNING` process is never preempted or interrupted when an emergency flight enters the ready queue. Emergency ready processes are prioritized on the next dispatch cycle. Deterministic tie-breaking (earlier arrival time, smaller flight ID) is preserved.
+- **GUI Layer**: Integrated 11 distinct columns in `FlightsView` with dedicated "Base Priority" and "Effective Priority" columns. Provides "🚨 Declare Emergency" and "✅ Clear Emergency" toolbar actions with confirmation dialogs, error handling, and role gating.
+
+### Automated Test Results (20 / 20 Passed in TestDynamicEmergencyPriority; 11 / 11 Test Suites Passed 100%)
+- All 11 CTest suites pass 100% (242 total tests across suite):
+  1. `TestDatabaseConnectivity`: Passed
+  2. `TestAuthAndRBAC`: Passed
+  3. `TestFlightManagement`: Passed
+  4. `TestAircraftManagement`: Passed
+  5. `TestProcessModel`: Passed
+  6. `TestReadyQueueAndProcessStates`: Passed
+  7. `TestPriorityScheduler`: Passed
+  8. `TestSchedulingMetrics`: Passed
+  9. `TestRunwayManagement`: Passed
+  10. `TestRunwayResourceAllocation`: Passed
+  11. `TestDynamicEmergencyPriority`: Passed (20/20 tests passed)
+
+### Scope Boundaries Confirmed (What was NOT implemented)
+- No aging algorithms or dynamic priority escalation over time (Day 17).
+- No starvation prevention or low-priority starvation metrics (Day 18).
+- No mutual exclusion, mutexes, condition variables, or critical section locks (Days 19–20).
+- No MySQL multi-statement ACID transaction management (`SELECT FOR UPDATE`, `COMMIT/ROLLBACK`) (Days 21–22).
+- No multithreaded dispatching or background OS threads (Day 23).
+- No dashboard/monitoring visualization widgets (Day 24).
+
+---
+
 ## CURRENT MILESTONE
-Phase 2 / Day 15 — Runway Resource Allocation — COMPLETE & VERIFIED
+Phase 2 / Day 16 — Dynamic Emergency Priority Changes — COMPLETE & VERIFIED
 
 ## NEXT MILESTONE (PENDING EXPLICIT USER APPROVAL)
-Phase 2 / Day 16 — Dynamic Emergency Priority Changes
+Phase 2 / Day 17 — Priority Aging Implementation

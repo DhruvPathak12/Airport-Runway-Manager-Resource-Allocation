@@ -199,6 +199,54 @@ void FlightsView::setupUi()
     connect(m_deleteButton, &QPushButton::clicked, this, &FlightsView::onDeleteFlightClicked);
     toolbarLayout->addWidget(m_deleteButton);
 
+    // Declare Emergency button (Day 16)
+    m_declareEmergencyButton = new QPushButton(QStringLiteral("🚨 Declare Emergency"), this);
+    m_declareEmergencyButton->setEnabled(false);
+    m_declareEmergencyButton->setStyleSheet(R"(
+        QPushButton {
+            background-color: #dc2626;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        QPushButton:hover {
+            background-color: #b91c1c;
+        }
+        QPushButton:disabled {
+            background-color: #cbd5e1;
+            color: #94a3b8;
+        }
+    )");
+    connect(m_declareEmergencyButton, &QPushButton::clicked, this, &FlightsView::onDeclareEmergencyClicked);
+    toolbarLayout->addWidget(m_declareEmergencyButton);
+
+    // Clear Emergency button (Day 16)
+    m_clearEmergencyButton = new QPushButton(QStringLiteral("✅ Clear Emergency"), this);
+    m_clearEmergencyButton->setEnabled(false);
+    m_clearEmergencyButton->setStyleSheet(R"(
+        QPushButton {
+            background-color: #059669;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        QPushButton:hover {
+            background-color: #047857;
+        }
+        QPushButton:disabled {
+            background-color: #cbd5e1;
+            color: #94a3b8;
+        }
+    )");
+    connect(m_clearEmergencyButton, &QPushButton::clicked, this, &FlightsView::onClearEmergencyClicked);
+    toolbarLayout->addWidget(m_clearEmergencyButton);
+
     mainLayout->addLayout(toolbarLayout);
 
     // ── 3. Content Area (Stacked: 0=Table, 1=Empty/Error State) ──────────────
@@ -206,7 +254,7 @@ void FlightsView::setupUi()
 
     // Table view
     m_tableWidget = new QTableWidget(this);
-    m_tableWidget->setColumnCount(10);
+    m_tableWidget->setColumnCount(11);
     m_tableWidget->setHorizontalHeaderLabels({
         QStringLiteral("ID"),
         QStringLiteral("Flight #"),
@@ -214,7 +262,8 @@ void FlightsView::setupUi()
         QStringLiteral("Type"),
         QStringLiteral("Route"),
         QStringLiteral("Scheduled Time"),
-        QStringLiteral("Priority"),
+        QStringLiteral("Base Priority"),
+        QStringLiteral("Effective Priority"),
         QStringLiteral("Emergency"),
         QStringLiteral("Operational Status"),
         QStringLiteral("Assigned Aircraft")
@@ -227,15 +276,9 @@ void FlightsView::setupUi()
     m_tableWidget->setShowGrid(false);
     m_tableWidget->verticalHeader()->setVisible(false);
     m_tableWidget->horizontalHeader()->setStretchLastSection(true);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(7, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(8, QHeaderView::ResizeToContents);
+    for (int col = 0; col < 10; ++col) {
+        m_tableWidget->horizontalHeader()->setSectionResizeMode(col, QHeaderView::ResizeToContents);
+    }
 
     m_tableWidget->setStyleSheet(R"(
         QTableWidget {
@@ -312,6 +355,8 @@ void FlightsView::updatePermissions()
     m_addButton->setVisible(canManage);
     m_editButton->setVisible(canManage);
     m_deleteButton->setVisible(canManage);
+    m_declareEmergencyButton->setVisible(canManage);
+    m_clearEmergencyButton->setVisible(canManage);
     m_stateButton->setVisible(canManage);
 
     if (!canManage) {
@@ -404,20 +449,44 @@ void FlightsView::renderFlightsTable(const QList<Models::Flight> &flights)
         QTableWidgetItem *timeItem = new QTableWidgetItem(timeStr);
         timeItem->setTextAlignment(Qt::AlignCenter);
 
-        // 6: Priority
-        QString prioStr;
+        // 6: Base Priority
+        QString basePrioStr;
         switch (f.priority) {
-            case 1: prioStr = QStringLiteral("P1 (Highest)"); break;
-            case 2: prioStr = QStringLiteral("P2 (High)"); break;
-            case 3: prioStr = QStringLiteral("P3 (Standard)"); break;
-            case 4: prioStr = QStringLiteral("P4 (Low)"); break;
-            case 5: prioStr = QStringLiteral("P5 (Lowest)"); break;
-            default: prioStr = QStringLiteral("P%1").arg(f.priority); break;
+            case 1: basePrioStr = QStringLiteral("P1 (Highest)"); break;
+            case 2: basePrioStr = QStringLiteral("P2 (High)"); break;
+            case 3: basePrioStr = QStringLiteral("P3 (Standard)"); break;
+            case 4: basePrioStr = QStringLiteral("P4 (Low)"); break;
+            case 5: basePrioStr = QStringLiteral("P5 (Lowest)"); break;
+            default: basePrioStr = QStringLiteral("P%1").arg(f.priority); break;
         }
-        QTableWidgetItem *prioItem = new QTableWidgetItem(prioStr);
-        prioItem->setTextAlignment(Qt::AlignCenter);
+        QTableWidgetItem *basePrioItem = new QTableWidgetItem(basePrioStr);
+        basePrioItem->setTextAlignment(Qt::AlignCenter);
 
-        // 7: Emergency
+        // 7: Effective Priority (Day 16)
+        int effPrio = f.effectivePriority();
+        QString effPrioStr;
+        if (f.isEmergency) {
+            effPrioStr = QStringLiteral("P1 (Emergency)");
+        } else {
+            switch (effPrio) {
+                case 1: effPrioStr = QStringLiteral("P1 (Highest)"); break;
+                case 2: effPrioStr = QStringLiteral("P2 (High)"); break;
+                case 3: effPrioStr = QStringLiteral("P3 (Standard)"); break;
+                case 4: effPrioStr = QStringLiteral("P4 (Low)"); break;
+                case 5: effPrioStr = QStringLiteral("P5 (Lowest)"); break;
+                default: effPrioStr = QStringLiteral("P%1").arg(effPrio); break;
+            }
+        }
+        QTableWidgetItem *effPrioItem = new QTableWidgetItem(effPrioStr);
+        effPrioItem->setTextAlignment(Qt::AlignCenter);
+        if (f.isEmergency) {
+            effPrioItem->setForeground(QColor(185, 28, 28)); // Bold red for elevated emergency priority
+            QFont effFont = effPrioItem->font();
+            effFont.setBold(true);
+            effPrioItem->setFont(effFont);
+        }
+
+        // 8: Emergency
         QTableWidgetItem *emergItem;
         if (f.isEmergency) {
             emergItem = new QTableWidgetItem(QStringLiteral("🚨 Emergency"));
@@ -431,7 +500,7 @@ void FlightsView::renderFlightsTable(const QList<Models::Flight> &flights)
         }
         emergItem->setTextAlignment(Qt::AlignCenter);
 
-        // 8: Operational Status
+        // 9: Operational Status
         QTableWidgetItem *statusItem = new QTableWidgetItem(f.operationalStatus);
         statusItem->setTextAlignment(Qt::AlignCenter);
         if (f.operationalStatus == QStringLiteral("Cleared") || f.operationalStatus == QStringLiteral("Landed")) {
@@ -444,7 +513,7 @@ void FlightsView::renderFlightsTable(const QList<Models::Flight> &flights)
             statusItem->setForeground(QColor(30, 41, 59));
         }
 
-        // 9: Assigned Aircraft
+        // 10: Assigned Aircraft
         QTableWidgetItem *acItem = new QTableWidgetItem(f.aircraftRegistration.isEmpty() ? QStringLiteral("Unassigned") : f.aircraftRegistration);
         acItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
@@ -454,10 +523,11 @@ void FlightsView::renderFlightsTable(const QList<Models::Flight> &flights)
         m_tableWidget->setItem(row, 3, typeItem);
         m_tableWidget->setItem(row, 4, routeItem);
         m_tableWidget->setItem(row, 5, timeItem);
-        m_tableWidget->setItem(row, 6, prioItem);
-        m_tableWidget->setItem(row, 7, emergItem);
-        m_tableWidget->setItem(row, 8, statusItem);
-        m_tableWidget->setItem(row, 9, acItem);
+        m_tableWidget->setItem(row, 6, basePrioItem);
+        m_tableWidget->setItem(row, 7, effPrioItem);
+        m_tableWidget->setItem(row, 8, emergItem);
+        m_tableWidget->setItem(row, 9, statusItem);
+        m_tableWidget->setItem(row, 10, acItem);
     }
 }
 
@@ -475,11 +545,24 @@ void FlightsView::onStatusFilterChanged(int index)
 
 void FlightsView::onSelectionChanged()
 {
-    bool hasSelection = (m_tableWidget->currentRow() >= 0);
+    Models::Flight *selected = getSelectedFlight();
+    bool hasSelection = (selected != nullptr);
     bool canManage = m_service && m_service->currentSession().hasPermission(QStringLiteral("action:ManageFlights"));
 
     m_editButton->setEnabled(hasSelection && canManage);
     m_deleteButton->setEnabled(hasSelection && canManage);
+
+    if (hasSelection && canManage && selected) {
+        bool isTerminal = (selected->operationalStatus.compare(QStringLiteral("Landed"), Qt::CaseInsensitive) == 0 ||
+                           selected->operationalStatus.compare(QStringLiteral("Departed"), Qt::CaseInsensitive) == 0 ||
+                           selected->operationalStatus.compare(QStringLiteral("Cancelled"), Qt::CaseInsensitive) == 0);
+
+        m_declareEmergencyButton->setEnabled(!selected->isEmergency && !isTerminal);
+        m_clearEmergencyButton->setEnabled(selected->isEmergency && !isTerminal);
+    } else {
+        m_declareEmergencyButton->setEnabled(false);
+        m_clearEmergencyButton->setEnabled(false);
+    }
 }
 
 Models::Flight* FlightsView::getSelectedFlight()
@@ -607,6 +690,97 @@ void FlightsView::onDeleteFlightClicked()
             QMessageBox::critical(this, QStringLiteral("Delete Failed"),
                                   QStringLiteral("Could not delete flight:\n%1").arg(error));
         }
+    }
+}
+
+void FlightsView::onDeclareEmergencyClicked()
+{
+    Models::Flight *selected = getSelectedFlight();
+    if (!selected) {
+        return;
+    }
+
+    if (!m_service || !m_service->currentSession().hasPermission(QStringLiteral("action:DeclareEmergency"))) {
+        QMessageBox::warning(this, QStringLiteral("Access Denied"),
+                             QStringLiteral("Only authorized ATC controllers may declare flight emergencies."));
+        return;
+    }
+
+    auto reply = QMessageBox::question(
+        this,
+        QStringLiteral("Confirm Emergency Declaration"),
+        QStringLiteral("Declare an emergency for flight %1 (%2)?\n\n"
+                       "This will dynamically elevate its scheduling effective priority to P1 (Highest) "
+                       "while strictly preserving its base priority (%3).")
+            .arg(selected->flightNumber, selected->airline, QString::number(selected->priority)),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+
+    QString error;
+    if (m_service->declareEmergency(selected->id, &error)) {
+        QMessageBox::information(
+            this,
+            QStringLiteral("Emergency Declared"),
+            QStringLiteral("Emergency successfully declared for flight %1. Effective priority is now P1 (Highest).")
+                .arg(selected->flightNumber)
+        );
+        refreshFlights();
+    } else {
+        QMessageBox::critical(
+            this,
+            QStringLiteral("Emergency Declaration Failed"),
+            QStringLiteral("Could not declare emergency:\n%1").arg(error)
+        );
+    }
+}
+
+void FlightsView::onClearEmergencyClicked()
+{
+    Models::Flight *selected = getSelectedFlight();
+    if (!selected) {
+        return;
+    }
+
+    if (!m_service || !m_service->currentSession().hasPermission(QStringLiteral("action:DeclareEmergency"))) {
+        QMessageBox::warning(this, QStringLiteral("Access Denied"),
+                             QStringLiteral("Only authorized ATC controllers may clear flight emergencies."));
+        return;
+    }
+
+    auto reply = QMessageBox::question(
+        this,
+        QStringLiteral("Confirm Clear Emergency"),
+        QStringLiteral("Clear the emergency declaration for flight %1?\n\n"
+                       "Its effective priority will return to its original base priority (P%2).")
+            .arg(selected->flightNumber, QString::number(selected->priority)),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+
+    QString error;
+    if (m_service->clearEmergency(selected->id, &error)) {
+        QMessageBox::information(
+            this,
+            QStringLiteral("Emergency Cleared"),
+            QStringLiteral("Emergency cleared for flight %1. Effective priority restored to P%2.")
+                .arg(selected->flightNumber, QString::number(selected->priority))
+        );
+        refreshFlights();
+    } else {
+        QMessageBox::critical(
+            this,
+            QStringLiteral("Clear Emergency Failed"),
+            QStringLiteral("Could not clear emergency:\n%1").arg(error)
+        );
     }
 }
 

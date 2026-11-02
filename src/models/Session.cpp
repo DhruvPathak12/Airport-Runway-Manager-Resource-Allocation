@@ -43,7 +43,7 @@ bool Session::hasPermission(const QString &permission) const
         return isAdmin() || isATC() || isOperator();
     }
 
-    if (permission == QStringLiteral("action:ManageFlights")) {
+    if (permission == QStringLiteral("action:ManageFlights") || permission == QStringLiteral("action:DeclareEmergency")) {
         return isATC();
     }
 

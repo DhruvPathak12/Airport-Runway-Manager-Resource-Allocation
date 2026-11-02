@@ -33,6 +33,16 @@ struct Flight {
     int         priority      = 3;  // 1=Highest … 5=Lowest (enforced by schema CHECK)
     bool        isEmergency   = false;
 
+    /**
+     * @brief Computes effective scheduling priority.
+     * For normal flights: effectivePriority == priority (base priority).
+     * For emergency flights: effectivePriority == 1 (highest priority).
+     * Base priority is strictly preserved.
+     */
+    int effectivePriority() const {
+        return isEmergency ? 1 : priority;
+    }
+
     // ── Operational status ────────────────────────────────────────────────────
     // Allowed values: Scheduled, Taxiing, Cleared, Landed, Departed, Cancelled
     QString     operationalStatus = QStringLiteral("Scheduled");

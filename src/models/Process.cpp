@@ -297,7 +297,8 @@ Process Process::fromFlight(const Flight &flight, int serviceTimeSeconds)
     Process proc;
     proc.flightId = flight.id;
     proc.basePriority = flight.priority;
-    proc.effectivePriority = flight.priority; // equal initially; dynamically adjusted by aging in Phase 2
+    proc.isEmergency = flight.isEmergency;
+    proc.effectivePriority = flight.effectivePriority(); // 1 if emergency, else base priority
     proc.serviceTime = (serviceTimeSeconds > 0) ? serviceTimeSeconds : 60;
     proc.arrivalTime = QDateTime::currentDateTime();
     proc.state = ProcessState::Ready;

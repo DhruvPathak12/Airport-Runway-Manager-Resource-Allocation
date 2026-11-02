@@ -62,7 +62,19 @@ struct Process {
     QDateTime       arrivalTime;             // timestamp entered ready queue
     int             basePriority       = 3;  // static priority (1=highest … 5=lowest)
     int             effectivePriority  = 3;  // dynamic priority (equals basePriority initially)
+    bool            isEmergency        = false; // whether process corresponds to an active emergency flight
     int             serviceTime        = 60; // CPU burst time in seconds (default 60s)
+
+    /**
+     * @brief Dynamically updates effective priority based on emergency state.
+     * When emergency is true: effectivePriority becomes 1 (highest priority).
+     * When emergency is false: effectivePriority is restored to basePriority.
+     * Base priority is strictly preserved.
+     */
+    void setEmergency(bool emergency) {
+        isEmergency = emergency;
+        effectivePriority = emergency ? 1 : basePriority;
+    }
 
     // ── Performance metrics (uncalculated until scheduler runs Day 11/12) ────
     int             waitingTime        = -1; // seconds in ready queue (-1 = uncalculated/NULL)

@@ -1852,7 +1852,33 @@ bool ApplicationService::updateFlight(const Models::Flight &flight, QString *out
         }
     }
 
+    // Synchronize scheduling_queue and ready queue if process exists
+    int updatedEffPrio = flight.effectivePriority();
+    QSqlQuery updateQueueQuery(db);
+    updateQueueQuery.prepare(QStringLiteral(
+        "UPDATE scheduling_queue SET effective_priority = :eff_prio, base_priority = :base_prio WHERE flight_id = :id;"
+    ));
+    updateQueueQuery.bindValue(QStringLiteral(":eff_prio"), updatedEffPrio);
+    updateQueueQuery.bindValue(QStringLiteral(":base_prio"), flight.priority);
+    updateQueueQuery.bindValue(QStringLiteral(":id"), flight.id);
+    updateQueueQuery.exec();
+
+    if (m_scheduler) {
+        Models::Process *qp = m_scheduler->readyQueue().findByFlightId(flight.id);
+        if (qp) {
+            qp->basePriority = flight.priority;
+            qp->setEmergency(flight.isEmergency);
+        }
+        if (m_scheduler->hasRunningProcess() && m_scheduler->runningProcess().flightId == flight.id) {
+            Models::Process rp = m_scheduler->runningProcess();
+            rp.basePriority = flight.priority;
+            rp.setEmergency(flight.isEmergency);
+            m_scheduler->setRunningProcess(rp);
+        }
+    }
+
     emit flightsChanged();
+    emit processesChanged();
     return true;
 }
 
@@ -1956,6 +1982,178 @@ bool ApplicationService::deleteFlight(int flightId, QString *outError)
     }
 
     emit flightsChanged();
+    return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dynamic Emergency Priority Methods (Day 16)
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool ApplicationService::declareEmergency(int flightId, QString *outError)
+{
+    return setFlightEmergency(flightId, true, outError);
+}
+
+bool ApplicationService::clearEmergency(int flightId, QString *outError)
+{
+    return setFlightEmergency(flightId, false, outError);
+}
+
+bool ApplicationService::setFlightEmergency(int flightId, bool emergency, QString *outError)
+{
+    // 1. Authentication check
+    if (!isAuthenticated()) {
+        if (outError) {
+            *outError = QStringLiteral("Authentication required: unauthenticated users cannot modify emergency status.");
+        }
+        return false;
+    }
+
+    // 2. Authorization check (ATC-only)
+    if (!m_session.hasPermission(QStringLiteral("action:DeclareEmergency"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to %2 flight emergencies (ATC-only).")
+                            .arg(m_session.role(), emergency ? QStringLiteral("declare") : QStringLiteral("clear"));
+        }
+        return false;
+    }
+
+    // 3. Flight ID validation
+    if (flightId <= 0) {
+        if (outError) {
+            *outError = QStringLiteral("Invalid flight ID (%1): must be a positive integer.").arg(flightId);
+        }
+        return false;
+    }
+
+    // 4. Database connection check
+    if (!checkDatabaseConnection()) {
+        if (outError) {
+            *outError = QStringLiteral("Database connection is offline: %1")
+                            .arg(DatabaseManager::instance().statusDescription());
+        }
+        return false;
+    }
+
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (!db.isOpen()) {
+        if (outError) {
+            *outError = QStringLiteral("Database is not currently open.");
+        }
+        return false;
+    }
+
+    // 5. Query flight to verify existence, current state, and operational eligibility
+    QString flightNumber;
+    int basePriority = 3;
+    bool currentEmergency = false;
+    QString opStatus;
+    {
+        QSqlQuery query(db);
+        query.prepare(QStringLiteral(
+            "SELECT flight_number, priority, is_emergency, operational_status "
+            "FROM flights WHERE flight_id = :id;"
+        ));
+        query.bindValue(QStringLiteral(":id"), flightId);
+
+        if (!query.exec()) {
+            qWarning() << "[ApplicationService] setFlightEmergency query failed:" << query.lastError().text();
+            if (outError) {
+                *outError = QStringLiteral("Failed to fetch flight record: %1").arg(query.lastError().text());
+            }
+            return false;
+        }
+
+        if (!query.next()) {
+            if (outError) {
+                *outError = QStringLiteral("Flight with ID %1 was not found in the database.").arg(flightId);
+            }
+            return false;
+        }
+
+        flightNumber     = query.value(0).toString();
+        basePriority     = query.value(1).toInt();
+        currentEmergency = (query.value(2).toInt() != 0);
+        opStatus         = query.value(3).toString();
+    }
+
+    // 6. Flight operational eligibility check (terminal flights cannot declare/clear emergency)
+    if (opStatus.compare(QStringLiteral("Landed"), Qt::CaseInsensitive) == 0 ||
+        opStatus.compare(QStringLiteral("Departed"), Qt::CaseInsensitive) == 0 ||
+        opStatus.compare(QStringLiteral("Cancelled"), Qt::CaseInsensitive) == 0) {
+        if (outError) {
+            *outError = QStringLiteral("Flight '%1' is in terminal status '%2' and cannot %3 emergency.")
+                            .arg(flightNumber, opStatus, emergency ? QStringLiteral("declare") : QStringLiteral("clear"));
+        }
+        return false;
+    }
+
+    // 7. Check if already in requested state (already emergency / already normal)
+    if (emergency == currentEmergency) {
+        if (outError) {
+            *outError = emergency
+                ? QStringLiteral("Flight '%1' is already declared as an emergency.").arg(flightNumber)
+                : QStringLiteral("Flight '%1' is not currently in an emergency state.").arg(flightNumber);
+        }
+        return false;
+    }
+
+    // 8. Update flights table (is_emergency) using parameterized SQL query
+    {
+        QSqlQuery updateFlightQuery(db);
+        updateFlightQuery.prepare(QStringLiteral(
+            "UPDATE flights SET is_emergency = :is_emergency WHERE flight_id = :id;"
+        ));
+        updateFlightQuery.bindValue(QStringLiteral(":is_emergency"), emergency ? 1 : 0);
+        updateFlightQuery.bindValue(QStringLiteral(":id"), flightId);
+
+        if (!updateFlightQuery.exec()) {
+            qWarning() << "[ApplicationService] setFlightEmergency: update flights failed:" << updateFlightQuery.lastError().text();
+            if (outError) {
+                *outError = QStringLiteral("Failed to update flight emergency flag in database: %1")
+                                .arg(updateFlightQuery.lastError().text());
+            }
+            return false;
+        }
+    }
+
+    // 9. Synchronize scheduling_queue table if an active process exists for this flight
+    int newEffectivePriority = emergency ? 1 : basePriority;
+    {
+        QSqlQuery updateQueueQuery(db);
+        updateQueueQuery.prepare(QStringLiteral(
+            "UPDATE scheduling_queue SET effective_priority = :eff_prio WHERE flight_id = :id;"
+        ));
+        updateQueueQuery.bindValue(QStringLiteral(":eff_prio"), newEffectivePriority);
+        updateQueueQuery.bindValue(QStringLiteral(":id"), flightId);
+
+        if (!updateQueueQuery.exec()) {
+            // Note: Multi-statement consistency limitation documented for Day 16 (Full ACID in Day 21)
+            qWarning() << "[ApplicationService] setFlightEmergency: note - scheduling_queue update warning:"
+                       << updateQueueQuery.lastError().text();
+        }
+    }
+
+    // 10. Synchronize in-memory Scheduler / ReadyQueue state
+    if (m_scheduler) {
+        // Update in ready queue if present
+        Models::Process *queuedProc = m_scheduler->readyQueue().findByFlightId(flightId);
+        if (queuedProc) {
+            queuedProc->setEmergency(emergency);
+        }
+
+        // If the process is currently RUNNING, update its effective priority without preemption
+        if (m_scheduler->hasRunningProcess() && m_scheduler->runningProcess().flightId == flightId) {
+            Models::Process running = m_scheduler->runningProcess();
+            running.setEmergency(emergency);
+            m_scheduler->setRunningProcess(running);
+        }
+    }
+
+    // 11. Emit notification signals for UI refresh
+    emit flightsChanged();
+    emit processesChanged();
+
     return true;
 }
 

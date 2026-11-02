@@ -41,6 +41,8 @@ private slots:
     void onAddFlightClicked();
     void onEditFlightClicked();
     void onDeleteFlightClicked();
+    void onDeclareEmergencyClicked();
+    void onClearEmergencyClicked();
     void onTableDoubleClicked(int row, int column);
 
 private:
@@ -51,14 +53,16 @@ private:
     ApplicationService *m_service = nullptr;
 
     // UI controls
-    QLineEdit      *m_searchEdit     = nullptr;
-    QComboBox      *m_statusFilter   = nullptr;
-    QPushButton    *m_refreshButton  = nullptr;
-    QPushButton    *m_addButton      = nullptr;
-    QPushButton    *m_editButton     = nullptr;
-    QPushButton    *m_deleteButton   = nullptr;
-    QLabel         *m_countBadge     = nullptr;
-    QLabel         *m_permNotice     = nullptr;
+    QLineEdit      *m_searchEdit              = nullptr;
+    QComboBox      *m_statusFilter            = nullptr;
+    QPushButton    *m_refreshButton           = nullptr;
+    QPushButton    *m_addButton               = nullptr;
+    QPushButton    *m_editButton              = nullptr;
+    QPushButton    *m_deleteButton            = nullptr;
+    QPushButton    *m_declareEmergencyButton  = nullptr;
+    QPushButton    *m_clearEmergencyButton    = nullptr;
+    QLabel         *m_countBadge              = nullptr;
+    QLabel         *m_permNotice              = nullptr;
 
     // View stack: 0 = Table, 1 = Empty / Offline / Error message
     QStackedWidget *m_contentStack   = nullptr;
