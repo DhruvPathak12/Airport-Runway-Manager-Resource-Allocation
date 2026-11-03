@@ -14,6 +14,16 @@ ApplicationService::ApplicationService(QObject *parent)
     , m_scheduler(new Scheduler(this))
     , m_resourceManager(new ResourceManager(this))
 {
+    if (m_scheduler && m_scheduler->agingEngine()) {
+        connect(m_scheduler->agingEngine(), &SchedulerComponents::AgingEngine::timeoutTriggered,
+                this, [this]() {
+                    if (m_session.isValid() && m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+                        evaluateAging();
+                    }
+                });
+        connect(m_scheduler->agingEngine(), &SchedulerComponents::AgingEngine::agingEvaluated,
+                this, &ApplicationService::agingEvaluated);
+    }
 }
 
 bool ApplicationService::initialize()
@@ -161,6 +171,10 @@ void ApplicationService::logout()
 void ApplicationService::shutdown()
 {
     qDebug() << "[ApplicationService] Shutting down...";
+
+    if (m_scheduler && m_scheduler->agingEngine()) {
+        m_scheduler->agingEngine()->stop();
+    }
 
     // Clear active session
     logout();
@@ -2524,6 +2538,14 @@ bool ApplicationService::updateAircraft(const Models::Aircraft &aircraft, QStrin
         return false;
     }
 
+    if (!m_session.hasPermission(QStringLiteral("action:AdministerAircraft")) && !m_session.isOperator()) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to edit aircraft.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
     Models::Aircraft existing;
     if (!getAircraftById(aircraft.id, existing, outError)) {
         return false;
@@ -2543,14 +2565,6 @@ bool ApplicationService::updateAircraft(const Models::Aircraft &aircraft, QStrin
             return false;
         }
         return updateAircraftStatus(aircraft.id, aircraft.status, outError);
-    }
-
-    if (!m_session.hasPermission(QStringLiteral("action:AdministerAircraft"))) {
-        if (outError) {
-            *outError = QStringLiteral("Access denied: role '%1' is not authorized to edit aircraft.")
-                            .arg(m_session.role());
-        }
-        return false;
     }
 
     if (!checkDatabaseConnection()) {
@@ -3394,7 +3408,7 @@ bool ApplicationService::syncReadyQueueFromDatabase(QString *outError)
     query.prepare(QStringLiteral(
         "SELECT q.queue_id, q.flight_id, q.arrival_time, q.base_priority, q.effective_priority, "
         "       q.service_time, q.waiting_time, q.turnaround_time, q.completion_time, q.process_state, "
-        "       f.flight_number, f.airline, f.operational_status "
+        "       f.flight_number, f.airline, f.operational_status, f.is_emergency "
         "FROM scheduling_queue q "
         "LEFT JOIN flights f ON q.flight_id = f.flight_id "
         "WHERE q.process_state = 'Ready' "
@@ -3414,8 +3428,10 @@ bool ApplicationService::syncReadyQueueFromDatabase(QString *outError)
         proc.setQueueId(query.value(QStringLiteral("queue_id")).toInt());
         proc.flightId = query.value(QStringLiteral("flight_id")).toInt();
         proc.arrivalTime = query.value(QStringLiteral("arrival_time")).toDateTime();
+        proc.readySince = proc.arrivalTime;
         proc.basePriority = query.value(QStringLiteral("base_priority")).toInt();
         proc.effectivePriority = query.value(QStringLiteral("effective_priority")).toInt();
+        proc.isEmergency = query.value(QStringLiteral("is_emergency")).toBool();
         proc.serviceTime = query.value(QStringLiteral("service_time")).toInt();
         proc.waitingTime = query.value(QStringLiteral("waiting_time")).isNull() ? -1 : query.value(QStringLiteral("waiting_time")).toInt();
         proc.turnaroundTime = query.value(QStringLiteral("turnaround_time")).isNull() ? -1 : query.value(QStringLiteral("turnaround_time")).toInt();
@@ -3624,6 +3640,147 @@ QList<Models::Process> ApplicationService::getCompletedProcesses() const
         return m_scheduler->completedProcesses();
     }
     return QList<Models::Process>();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Day 17: Priority Aging Implementation
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool ApplicationService::setAgingInterval(int intervalSeconds, QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot configure aging interval.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to configure priority aging.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (!m_scheduler || !m_scheduler->agingEngine()) {
+        if (outError) *outError = QStringLiteral("Scheduler service is not initialized.");
+        return false;
+    }
+
+    return m_scheduler->agingEngine()->setIntervalSeconds(intervalSeconds, outError);
+}
+
+int ApplicationService::agingInterval() const
+{
+    return (m_scheduler && m_scheduler->agingEngine()) ? m_scheduler->agingEngine()->intervalSeconds() : 30;
+}
+
+bool ApplicationService::startAging(QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot start priority aging.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to start priority aging.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (!m_scheduler || !m_scheduler->agingEngine()) {
+        if (outError) *outError = QStringLiteral("Scheduler service is not initialized.");
+        return false;
+    }
+
+    return m_scheduler->agingEngine()->start(outError);
+}
+
+bool ApplicationService::stopAging(QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot stop priority aging.");
+        return false;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to stop priority aging.")
+                            .arg(m_session.role());
+        }
+        return false;
+    }
+
+    if (m_scheduler && m_scheduler->agingEngine()) {
+        m_scheduler->agingEngine()->stop();
+    }
+    return true;
+}
+
+bool ApplicationService::isAgingRunning() const
+{
+    return (m_scheduler && m_scheduler->agingEngine()) ? m_scheduler->agingEngine()->isRunning() : false;
+}
+
+int ApplicationService::evaluateAging(const QDateTime &evaluationTime,
+                                      int *outUpdatedCount,
+                                      QString *outError)
+{
+    if (!isAuthenticated()) {
+        if (outError) *outError = QStringLiteral("Authentication required: unauthenticated users cannot evaluate priority aging.");
+        return -1;
+    }
+
+    if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Access denied: role '%1' is not authorized to evaluate priority aging.")
+                            .arg(m_session.role());
+        }
+        return -1;
+    }
+
+    if (!m_scheduler) {
+        if (outError) *outError = QStringLiteral("Scheduler service is not initialized.");
+        return -1;
+    }
+
+    int updated = 0;
+    int evaluated = m_scheduler->evaluateAging(evaluationTime, &updated);
+
+    if (outUpdatedCount) {
+        *outUpdatedCount = updated;
+    }
+
+    // Persist updated effective priorities and aging levels to MySQL if connected
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (db.isOpen()) {
+        for (const auto &proc : m_scheduler->readyQueue().allProcesses()) {
+            QSqlQuery updateQ(db);
+            updateQ.prepare(QStringLiteral(
+                "UPDATE scheduling_queue "
+                "SET effective_priority = :eff_prio, aging_level = :aging_level "
+                "WHERE flight_id = :fid AND process_state = 'Ready';"
+            ));
+            updateQ.bindValue(QStringLiteral(":eff_prio"), proc.effectivePriority);
+            updateQ.bindValue(QStringLiteral(":aging_level"), proc.agingLevel);
+            updateQ.bindValue(QStringLiteral(":fid"), proc.flightId);
+            if (!updateQ.exec()) {
+                qWarning() << "[ApplicationService] evaluateAging DB update failed for flight" << proc.flightId << ":" << updateQ.lastError().text();
+            }
+        }
+    } else {
+        if (outError && DatabaseManager::instance().isConnected()) {
+            *outError = QStringLiteral("Database connection is offline; changes applied in memory only.");
+        }
+    }
+
+    if (updated > 0) {
+        emit processesChanged();
+        emit flightsChanged();
+    }
+
+    return evaluated;
 }
 
 

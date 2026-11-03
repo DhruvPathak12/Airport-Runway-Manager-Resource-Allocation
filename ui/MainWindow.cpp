@@ -32,6 +32,7 @@ static constexpr int NAV_COUNT = sizeof(NAV_ITEMS) / sizeof(NAV_ITEMS[0]);
 #include "ui/FlightsView.h"
 #include "ui/AircraftView.h"
 #include "ui/RunwaysView.h"
+#include "ui/SchedulingView.h"
 #include <QPushButton>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,6 +192,9 @@ void MainWindow::setupPages()
         } else if (i == 3) { // Runways page (Day 14)
             m_runwaysView = new RunwaysView(m_service, this);
             m_pageStack->addWidget(m_runwaysView);
+        } else if (i == 4) { // Scheduling page (Day 17)
+            m_schedulingView = new SchedulingView(m_service, this);
+            m_pageStack->addWidget(m_schedulingView);
         } else {
             m_pageStack->addWidget(
                 makePlaceholderPage(NAV_ITEMS[i].label, NAV_ITEMS[i].description)
@@ -244,6 +248,8 @@ void MainWindow::onNavItemChanged(int row)
             m_aircraftView->refreshAircraft();
         } else if (row == 3 && m_runwaysView) {
             m_runwaysView->refreshRunways();
+        } else if (row == 4 && m_schedulingView) {
+            m_schedulingView->refreshView();
         }
     }
 }
@@ -321,6 +327,10 @@ void MainWindow::onUserLoggedIn()
     if (m_runwaysView) {
         m_runwaysView->updatePermissions();
         m_runwaysView->refreshRunways();
+    }
+    if (m_schedulingView) {
+        m_schedulingView->updatePermissions();
+        m_schedulingView->refreshView();
     }
 
     m_mainStack->setCurrentWidget(m_appShell);

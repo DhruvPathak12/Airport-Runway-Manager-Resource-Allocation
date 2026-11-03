@@ -44,6 +44,8 @@ set(APP_SOURCES
     ui/RunwayAllocationDialog.cpp
     ui/RunwaysView.h
     ui/RunwaysView.cpp
+    ui/SchedulingView.h
+    ui/SchedulingView.cpp
 
     # Service layer (src/services/)
     src/services/ApplicationService.h
@@ -58,6 +60,8 @@ set(APP_SOURCES
     src/scheduler/Scheduler.cpp
     src/scheduler/ReadyQueue.h
     src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
 
     # Resource layer (src/resource/)
     src/resource/ResourceManager.h
@@ -138,6 +142,8 @@ add_executable(TestAuthAndRBAC
     src/scheduler/Scheduler.cpp
     src/scheduler/ReadyQueue.h
     src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -174,6 +180,8 @@ add_executable(TestFlightManagement
     src/scheduler/Scheduler.cpp
     src/scheduler/ReadyQueue.h
     src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -211,6 +219,8 @@ add_executable(TestAircraftManagement
     src/scheduler/Scheduler.cpp
     src/scheduler/ReadyQueue.h
     src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -248,6 +258,8 @@ add_executable(TestProcessModel
     src/scheduler/Scheduler.cpp
     src/scheduler/ReadyQueue.h
     src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -285,6 +297,8 @@ add_executable(TestReadyQueueAndProcessStates
     src/scheduler/Scheduler.cpp
     src/scheduler/ReadyQueue.h
     src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -322,6 +336,8 @@ add_executable(TestPriorityScheduler
     src/scheduler/Scheduler.cpp
     src/scheduler/ReadyQueue.h
     src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -359,6 +375,8 @@ add_executable(TestSchedulingMetrics
     src/scheduler/Scheduler.cpp
     src/scheduler/ReadyQueue.h
     src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -397,6 +415,8 @@ add_executable(TestRunwayManagement
     src/scheduler/Scheduler.cpp
     src/scheduler/ReadyQueue.h
     src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -436,6 +456,8 @@ add_executable(TestRunwayResourceAllocation
     src/scheduler/Scheduler.cpp
     src/scheduler/ReadyQueue.h
     src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -478,6 +500,8 @@ add_executable(TestDynamicEmergencyPriority
     src/scheduler/Scheduler.cpp
     src/scheduler/ReadyQueue.h
     src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -496,3 +520,47 @@ target_include_directories(TestDynamicEmergencyPriority
 )
 
 add_test(NAME TestDynamicEmergencyPriority COMMAND TestDynamicEmergencyPriority)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Day 17: Priority Aging Test Suite
+# ─────────────────────────────────────────────────────────────────────────────
+add_executable(TestPriorityAging
+    tests/TestPriorityAging.cpp
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cpp
+    src/models/Session.h
+    src/models/Session.cpp
+    src/models/Flight.h
+    src/models/Aircraft.h
+    src/models/Runway.h
+    src/models/RunwayAssignment.h
+    src/models/Process.h
+    src/models/Process.cpp
+    src/services/ApplicationService.h
+    src/services/ApplicationService.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/scheduler/Scheduler.h
+    src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
+    src/resource/ResourceManager.h
+    src/resource/ResourceManager.cpp
+)
+
+target_link_libraries(TestPriorityAging
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestPriorityAging
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestPriorityAging COMMAND TestPriorityAging)

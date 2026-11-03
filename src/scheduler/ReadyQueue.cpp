@@ -1,4 +1,5 @@
 #include "scheduler/ReadyQueue.h"
+#include <algorithm>
 
 namespace SchedulerComponents {
 
@@ -163,8 +164,65 @@ const Models::Process* ReadyQueue::peek() const
     return &m_queue.first();
 }
 
+void ReadyQueue::reorder()
+{
+    std::stable_sort(m_queue.begin(), m_queue.end(), [](const Models::Process &a, const Models::Process &b) {
+        // 1. Lower effective priority first (1=Highest ... 5=Lowest)
+        if (a.effectivePriority != b.effectivePriority) {
+            return a.effectivePriority < b.effectivePriority;
+        }
+        // 2. Earlier arrival time first
+        if (a.arrivalTime.isValid() && b.arrivalTime.isValid()) {
+            if (a.arrivalTime != b.arrivalTime) {
+                return a.arrivalTime < b.arrivalTime;
+            }
+        } else if (a.arrivalTime.isValid()) {
+            return true;
+        } else if (b.arrivalTime.isValid()) {
+            return false;
+        }
+        // 3. Smaller flightId (PID) first
+        return a.flightId < b.flightId;
+    });
+}
+
+int ReadyQueue::evaluateAging(int intervalSeconds, const QDateTime &evaluationTime, int *outUpdatedCount)
+{
+    QDateTime evalTime = evaluationTime.isValid() ? evaluationTime : QDateTime::currentDateTime();
+    int evaluated = 0;
+    int updated = 0;
+
+    for (auto &proc : m_queue) {
+        if (proc.state == Models::ProcessState::Ready) {
+            evaluated++;
+            if (proc.applyAging(evalTime, intervalSeconds)) {
+                updated++;
+            }
+        }
+    }
+
+    if (outUpdatedCount) {
+        *outUpdatedCount = updated;
+    }
+
+    if (updated > 0) {
+        reorder();
+    }
+
+    return evaluated;
+}
+
 bool ReadyQueue::transitionProcessState(int flightId,
                                         Models::ProcessState newState,
+                                        Models::Process *outProcess,
+                                        QString *outError)
+{
+    return transitionProcessState(flightId, newState, QDateTime::currentDateTime(), outProcess, outError);
+}
+
+bool ReadyQueue::transitionProcessState(int flightId,
+                                        Models::ProcessState newState,
+                                        const QDateTime &timestamp,
                                         Models::Process *outProcess,
                                         QString *outError)
 {
@@ -187,7 +245,7 @@ bool ReadyQueue::transitionProcessState(int flightId,
         return false;
     }
 
-    m_queue[index].transitionTo(newState);
+    m_queue[index].transitionTo(newState, timestamp);
 
     if (newState != Models::ProcessState::Ready) {
         // Process is no longer ready; remove from queue to maintain state consistency

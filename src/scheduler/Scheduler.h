@@ -5,6 +5,7 @@
 #include "models/Flight.h"
 #include "models/Process.h"
 #include "scheduler/ReadyQueue.h"
+#include "scheduler/AgingEngine.h"
 
 /**
  * @brief Foundation for the Priority Scheduler.
@@ -168,6 +169,20 @@ public:
     PerformanceMetrics calculateAggregateMetrics() const;
 
     /**
+     * @brief Accessor to the Priority Aging Engine.
+     */
+    SchedulerComponents::AgingEngine* agingEngine() { return &m_agingEngine; }
+    const SchedulerComponents::AgingEngine* agingEngine() const { return &m_agingEngine; }
+
+    /**
+     * @brief Evaluates aging across all ready queue processes using the aging engine.
+     * @param evaluationTime Injected timestamp or invalid for wall clock.
+     * @param outUpdatedCount Optional pointer receiving count of processes whose priority changed.
+     * @return Number of eligible READY processes evaluated.
+     */
+    int evaluateAging(const QDateTime &evaluationTime = QDateTime(), int *outUpdatedCount = nullptr);
+
+    /**
      * @brief Resets the scheduler state (clears ready queue, running process, and completed records).
      */
     void reset();
@@ -206,8 +221,9 @@ signals:
     void schedulerError(const QString &message);
 
 private:
-    SchedulerComponents::ReadyQueue m_readyQueue;
-    Models::Process                 m_runningProcess;
-    bool                            m_hasRunningProcess = false;
-    QList<Models::Process>          m_completedProcesses;
+    SchedulerComponents::ReadyQueue   m_readyQueue;
+    SchedulerComponents::AgingEngine  m_agingEngine;
+    Models::Process                   m_runningProcess;
+    bool                              m_hasRunningProcess = false;
+    QList<Models::Process>            m_completedProcesses;
 };

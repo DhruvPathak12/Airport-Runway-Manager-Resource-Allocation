@@ -270,12 +270,21 @@ CREATE TABLE IF NOT EXISTS scheduling_queue (
     -- Timestamp when this flight entered the ready queue
     arrival_time        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
+    -- Timestamp when process entered current continuous READY waiting period (Day 17)
+    ready_since         DATETIME        NULL DEFAULT NULL
+                            COMMENT 'Timestamp when process entered continuous READY waiting period',
+
     -- Static priority copied from flights.priority at insert time (1–5)
     base_priority       TINYINT UNSIGNED
                                         NOT NULL DEFAULT 3,
     -- Dynamic priority; equals base_priority in Phase 1; adjusted by aging in Phase 2
     effective_priority  TINYINT UNSIGNED
                                         NOT NULL DEFAULT 3,
+
+    -- Number of completed aging intervals accrued in READY state (Day 17)
+    aging_level         TINYINT UNSIGNED
+                                        NOT NULL DEFAULT 0
+                            COMMENT 'Number of completed aging intervals accrued in READY state',
 
     -- Service/burst time in seconds; user-entered when adding to queue; default 60
     service_time        SMALLINT UNSIGNED

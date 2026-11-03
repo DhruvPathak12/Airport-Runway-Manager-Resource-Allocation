@@ -432,7 +432,56 @@ public:
      */
     QList<Models::Process> getCompletedProcesses() const;
 
+    // ── Priority Aging Methods (Day 17) ──────────────────────────────────────
+    /**
+     * @brief Configures real-time wall-clock aging interval in seconds.
+     * Enforces RBAC (action:ManageScheduling - ATC / Admin only) and validates range.
+     * @param intervalSeconds Duration in seconds (1 to 86400).
+     * @param outError Optional string receiving failure description.
+     * @return true if valid and configured.
+     */
+    bool setAgingInterval(int intervalSeconds, QString *outError = nullptr);
+
+    /**
+     * @brief Returns currently configured aging interval in seconds.
+     */
+    int agingInterval() const;
+
+    /**
+     * @brief Starts real-time aging evaluation timer.
+     * Enforces RBAC (action:ManageScheduling).
+     */
+    bool startAging(QString *outError = nullptr);
+
+    /**
+     * @brief Stops real-time aging evaluation timer.
+     * Enforces RBAC (action:ManageScheduling).
+     */
+    bool stopAging(QString *outError = nullptr);
+
+    /**
+     * @brief Returns true if real-time aging timer is currently running.
+     */
+    bool isAgingRunning() const;
+
+    /**
+     * @brief Evaluates priority aging across ready queue processes.
+     * Enforces RBAC (action:ManageScheduling).
+     * Updates aging levels, adjusts effective priorities, and synchronizes persistent MySQL storage.
+     * @param evaluationTime Injected evaluation timestamp, or invalid for wall clock.
+     * @param outUpdatedCount Optional pointer receiving count of processes whose priority changed.
+     * @param outError Optional string receiving error on failure.
+     * @return Number of eligible READY processes evaluated, or -1 on error.
+     */
+    int evaluateAging(const QDateTime &evaluationTime = QDateTime(),
+                      int *outUpdatedCount = nullptr,
+                      QString *outError = nullptr);
+
 signals:
+    /**
+     * @brief Emitted when priority aging is evaluated.
+     */
+    void agingEvaluated(int eligibleCount, int updatedCount);
     /**
      * @brief Emitted when the application is fully initialized and ready.
      */

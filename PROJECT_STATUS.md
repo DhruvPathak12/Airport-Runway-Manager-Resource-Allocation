@@ -884,8 +884,68 @@ All 6 CTest suites pass 100%:
 
 ---
 
+---
+
+## DAY 17 — Priority Aging Implementation ✅ COMPLETE
+
+### Files Created/Modified
+- `src/models/Process.h` (updated — added `readySince`, `agingLevel`, `lastAgingEvaluation`, aging calculation methods, and updated `setEmergency()`)
+- `src/models/Process.cpp` (updated — implemented `calculateAgingLevels`, `calculateEffectivePriority`, `applyAging`, `readyWaitingDurationSeconds`, and continuous ready state tracking in `transitionTo`)
+- `src/scheduler/ReadyQueue.h` (updated — added `reorder()` and `evaluateAging()` interfaces)
+- `src/scheduler/ReadyQueue.cpp` (updated — implemented deterministic stable reordering and batch aging evaluation)
+- `src/scheduler/AgingEngine.h` (NEW — real-time wall-clock aging timer component)
+- `src/scheduler/AgingEngine.cpp` (NEW — implemented QTimer lifecycle, interval validation, and evaluation delegation)
+- `src/scheduler/Scheduler.h` (updated — integrated `AgingEngine` and aging evaluation interface)
+- `src/scheduler/Scheduler.cpp` (updated — connected aging timer signals and reset cleanup)
+- `src/services/ApplicationService.h` (updated — declared aging configuration, lifecycle, and evaluation APIs)
+- `src/services/ApplicationService.cpp` (updated — implemented aging service orchestration, RBAC checks, MySQL persistence, and fixed aircraft update RBAC check order)
+- `sql/schema.sql` (updated — documented `ready_since` and `aging_level` columns on `scheduling_queue`)
+- `sql/migration_day17_aging.sql` (NEW — repeatable migration script for `ready_since` and `aging_level`)
+- `ui/SchedulingView.h` (NEW — Qt 6 GUI scheduling and aging monitor header)
+- `ui/SchedulingView.cpp` (NEW — implemented scheduling monitor with live wait-clock, queue inspection, and controls)
+- `ui/MainWindow.h` (updated — declared `SchedulingView` member)
+- `ui/MainWindow.cpp` (updated — wired `SchedulingView` into navigation page stack and session handlers)
+- `tests/TestPriorityAging.cpp` (NEW — comprehensive 33-point unit and integration test suite)
+- `CMakeLists.txt` (updated — registered new source files and `TestPriorityAging` target)
+- `docs/DAY17_PRIORITY_AGING_REPORT.md` (NEW — comprehensive Day 17 verification report)
+- `PROJECT_STATUS.md` (updated — marked Day 17 complete)
+
+### Architecture Established
+- **Model**: Priority Aging formula: $P_{\text{eff}} = \text{isEmergency} \; ? \; 1 : \max(1, P_{\text{base}} - \text{agingLevels})$. Base priority ($1 \le P_{\text{base}} \le 5$) is strictly preserved; effective priority ($1 \le P_{\text{eff}} \le 5$) dynamically improves by 1 level per continuous READY aging interval ($T_{\text{interval}}$).
+- **Aging Engine**: Centralized `AgingEngine` managing a single Qt 6 `QTimer`. Default interval 30s. Idempotent evaluation strictly derived from elapsed waiting time ($\lfloor \Delta t / T_{\text{interval}} \rfloor$).
+- **Emergency Priority Interaction**: Emergency declaration forces $P_{\text{eff}} = 1$. Aging never lowers emergency priority. Clearing an emergency restores the aging-adjusted effective priority.
+- **Process State Machine**: Continuous READY waiting period starts on entry to `Ready` (`readySince = now`, `agingLevel = 0`) and ends on departure from `Ready`. Returning from `Blocked` begins a new waiting period.
+- **Scheduler & Queue**: `ReadyQueue::reorder()` implements deterministic tie-breaking ($P_{\text{eff}}$ ASC, arrival time ASC, flight ID ASC). Non-preemptive execution invariant strictly maintained.
+- **Service & RBAC Layer**: `setAgingInterval`, `startAging`, `stopAging`, `evaluateAging` gated by `action:ManageScheduling` (ATC and Administrator only; Operator view-only).
+- **Database Layer**: Parameterized updates synchronize `effective_priority` and `aging_level` in `scheduling_queue`. In-memory simulation continues safely if MySQL is offline.
+- **GUI Layer**: Integrated `SchedulingView` in `MainWindow` with live ticking wait-clock, 10-column table, running status banner, and controls.
+
+### Automated Test Results (33 / 33 Passed in TestPriorityAging; 12 / 12 Test Suites Passed 100%)
+- All 12 CTest suites pass 100% (275 total tests across suite):
+  1. `TestDatabaseConnectivity`: Passed
+  2. `TestAuthAndRBAC`: Passed
+  3. `TestFlightManagement`: Passed
+  4. `TestAircraftManagement`: Passed
+  5. `TestProcessModel`: Passed
+  6. `TestReadyQueueAndProcessStates`: Passed
+  7. `TestPriorityScheduler`: Passed
+  8. `TestSchedulingMetrics`: Passed
+  9. `TestRunwayManagement`: Passed
+  10. `TestRunwayResourceAllocation`: Passed
+  11. `TestDynamicEmergencyPriority`: Passed
+  12. `TestPriorityAging`: Passed (33/33 tests passed)
+
+### Scope Boundaries Confirmed (What was NOT implemented)
+- No dedicated starvation demonstration and prevention verification (Day 18).
+- No critical section, mutexes, condition variables, or locks (Days 19–20).
+- No MySQL multi-statement ACID transaction management (`SELECT FOR UPDATE`, `COMMIT/ROLLBACK`) (Days 21–22).
+- No multithreaded dispatching or background OS threads (Day 23).
+- No dashboard/monitoring visualization widgets (Day 24).
+
+---
+
 ## CURRENT MILESTONE
-Phase 2 / Day 16 — Dynamic Emergency Priority Changes — COMPLETE & VERIFIED
+Phase 2 / Day 17 — Priority Aging Implementation — COMPLETE & VERIFIED
 
 ## NEXT MILESTONE (PENDING EXPLICIT USER APPROVAL)
-Phase 2 / Day 17 — Priority Aging Implementation
+Phase 2 / Day 18 — Starvation Demonstration and Prevention Verification

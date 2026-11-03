@@ -4,7 +4,19 @@
 
 Scheduler::Scheduler(QObject *parent)
     : QObject(parent)
+    , m_agingEngine(this)
 {
+    connect(&m_agingEngine, &SchedulerComponents::AgingEngine::timeoutTriggered,
+            this, [this]() {
+                evaluateAging();
+            });
+}
+
+int Scheduler::evaluateAging(const QDateTime &evaluationTime, int *outUpdatedCount)
+{
+    int count = m_agingEngine.evaluateAging(m_readyQueue, evaluationTime, outUpdatedCount);
+    emit schedulingComplete();
+    return count;
 }
 
 bool Scheduler::selectNextProcess(Models::Process *outProcess, QString *outReason) const
@@ -290,6 +302,7 @@ Scheduler::PerformanceMetrics Scheduler::calculateAggregateMetrics() const
 
 void Scheduler::reset()
 {
+    m_agingEngine.stop();
     m_readyQueue.clear();
     clearRunningProcess();
     m_completedProcesses.clear();

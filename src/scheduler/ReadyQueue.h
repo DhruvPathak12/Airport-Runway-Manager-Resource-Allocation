@@ -89,6 +89,29 @@ public:
     QList<Models::Process> allProcesses() const { return m_queue; }
     QList<Models::Process> toProcessList() const { return m_queue; }
 
+    // ── Priority & Aging Reordering (Day 17) ─────────────────────────────────
+    /**
+     * @brief Reorders the ready queue according to non-preemptive priority criteria:
+     *   1. Lower effective priority first (1=Highest ... 5=Lowest).
+     *   2. Earlier arrival time first.
+     *   3. Smaller flight ID first.
+     * Preserves relative stability for equivalent items.
+     */
+    void reorder();
+
+    /**
+     * @brief Evaluates priority aging across all READY processes in the queue.
+     * Updates aging levels and effective priorities based on elapsed continuous READY waiting time.
+     * Reorders queue if any priorities changed.
+     * @param intervalSeconds Configured aging threshold duration in seconds.
+     * @param evaluationTime Injected evaluation timestamp (or invalid for current wall clock).
+     * @param outUpdatedCount Optional count of processes whose effective priority changed.
+     * @return Total count of eligible READY processes evaluated.
+     */
+    int evaluateAging(int intervalSeconds,
+                      const QDateTime &evaluationTime = QDateTime(),
+                      int *outUpdatedCount = nullptr);
+
     // ── State Consistency ────────────────────────────────────────────────────
     /**
      * @brief Transitions the state of a queued process.
@@ -97,6 +120,12 @@ public:
      */
     bool transitionProcessState(int flightId,
                                 Models::ProcessState newState,
+                                Models::Process *outProcess = nullptr,
+                                QString *outError = nullptr);
+
+    bool transitionProcessState(int flightId,
+                                Models::ProcessState newState,
+                                const QDateTime &timestamp,
                                 Models::Process *outProcess = nullptr,
                                 QString *outError = nullptr);
 

@@ -4,6 +4,7 @@ namespace Models {
 
 Process::Process()
     : arrivalTime(QDateTime::currentDateTime())
+    , readySince(arrivalTime)
 {
 }
 
@@ -12,6 +13,7 @@ Process::Process(int qid, int fid, int priority, int burstSec, ProcessState st)
     , queueId(qid)
     , flightId(fid)
     , arrivalTime(QDateTime::currentDateTime())
+    , readySince(st == ProcessState::Ready ? arrivalTime : QDateTime())
     , basePriority(priority)
     , effectivePriority(priority)
     , serviceTime(burstSec)
@@ -33,6 +35,11 @@ bool Process::validate(QString *outError) const
 
     if (effectivePriority < 1 || effectivePriority > 5) {
         if (outError) *outError = QStringLiteral("Effective priority must be between 1 (highest) and 5 (lowest).");
+        return false;
+    }
+
+    if (agingLevel < 0) {
+        if (outError) *outError = QStringLiteral("Aging level cannot be negative.");
         return false;
     }
 
@@ -188,12 +195,73 @@ bool Process::canTransitionTo(ProcessState targetState, QString *outReason) cons
 
 bool Process::transitionTo(ProcessState targetState, QString *outError)
 {
+    return transitionTo(targetState, QDateTime::currentDateTime(), outError);
+}
+
+bool Process::transitionTo(ProcessState targetState, const QDateTime &timestamp, QString *outError)
+{
     if (!canTransitionTo(targetState, outError)) {
         return false;
     }
 
+    QDateTime now = timestamp.isValid() ? timestamp : QDateTime::currentDateTime();
+
+    if (targetState == ProcessState::Ready) {
+        // Entering or returning to READY begins a new waiting period
+        readySince = now;
+        agingLevel = 0;
+        effectivePriority = isEmergency ? 1 : basePriority;
+    } else if (state == ProcessState::Ready) {
+        // Leaving READY ends the current continuous waiting period
+        readySince = QDateTime();
+    }
+
     state = targetState;
     return true;
+}
+
+int Process::calculateAgingLevels(const QDateTime &now, int intervalSeconds) const
+{
+    if (intervalSeconds <= 0 || !readySince.isValid()) {
+        return 0;
+    }
+    QDateTime evalTime = now.isValid() ? now : QDateTime::currentDateTime();
+    qint64 sec = readySince.secsTo(evalTime);
+    if (sec <= 0) {
+        return 0;
+    }
+    return static_cast<int>(sec / intervalSeconds);
+}
+
+int Process::calculateEffectivePriority(const QDateTime &now, int intervalSeconds) const
+{
+    if (isEmergency) {
+        return 1;
+    }
+    int levels = calculateAgingLevels(now, intervalSeconds);
+    return std::max(1, basePriority - levels);
+}
+
+bool Process::applyAging(const QDateTime &now, int intervalSeconds)
+{
+    if (state != ProcessState::Ready) {
+        return false;
+    }
+    lastAgingEvaluation = now.isValid() ? now : QDateTime::currentDateTime();
+    agingLevel = calculateAgingLevels(lastAgingEvaluation, intervalSeconds);
+    int oldEff = effectivePriority;
+    effectivePriority = isEmergency ? 1 : std::max(1, basePriority - agingLevel);
+    return effectivePriority != oldEff;
+}
+
+int Process::readyWaitingDurationSeconds(const QDateTime &now) const
+{
+    if (state != ProcessState::Ready || !readySince.isValid()) {
+        return 0;
+    }
+    QDateTime evalTime = now.isValid() ? now : QDateTime::currentDateTime();
+    qint64 sec = readySince.secsTo(evalTime);
+    return sec > 0 ? static_cast<int>(sec) : 0;
 }
 
 QString Process::stateToString(ProcessState st)
@@ -301,6 +369,8 @@ Process Process::fromFlight(const Flight &flight, int serviceTimeSeconds)
     proc.effectivePriority = flight.effectivePriority(); // 1 if emergency, else base priority
     proc.serviceTime = (serviceTimeSeconds > 0) ? serviceTimeSeconds : 60;
     proc.arrivalTime = QDateTime::currentDateTime();
+    proc.readySince = proc.arrivalTime;
+    proc.agingLevel = 0;
     proc.state = ProcessState::Ready;
 
     // Presentation metadata

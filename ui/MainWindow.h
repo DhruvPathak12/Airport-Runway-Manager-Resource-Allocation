@@ -10,6 +10,7 @@ class LoginView;
 class FlightsView;
 class AircraftView;
 class RunwaysView;
+class SchedulingView;
 class QPushButton;
 
 /**
@@ -43,8 +44,9 @@ private:
     LoginView      *m_loginView     = nullptr;
     FlightsView    *m_flightsView   = nullptr;
     AircraftView   *m_aircraftView  = nullptr;
-    RunwaysView    *m_runwaysView   = nullptr;
-    QWidget        *m_appShell      = nullptr;
+    RunwaysView    *m_runwaysView    = nullptr;
+    SchedulingView *m_schedulingView = nullptr;
+    QWidget        *m_appShell       = nullptr;
 
     QListWidget    *m_navList       = nullptr;
     QStackedWidget *m_pageStack     = nullptr;

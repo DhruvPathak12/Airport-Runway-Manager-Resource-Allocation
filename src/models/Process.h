@@ -62,19 +62,51 @@ struct Process {
     QDateTime       arrivalTime;             // timestamp entered ready queue
     int             basePriority       = 3;  // static priority (1=highest … 5=lowest)
     int             effectivePriority  = 3;  // dynamic priority (equals basePriority initially)
+    QDateTime       readySince;              // timestamp entered continuous READY waiting period (Day 17)
+    int             agingLevel         = 0;  // number of accrued aging levels (Day 17)
+    QDateTime       lastAgingEvaluation;     // timestamp of last aging evaluation (Day 17)
     bool            isEmergency        = false; // whether process corresponds to an active emergency flight
     int             serviceTime        = 60; // CPU burst time in seconds (default 60s)
 
     /**
      * @brief Dynamically updates effective priority based on emergency state.
      * When emergency is true: effectivePriority becomes 1 (highest priority).
-     * When emergency is false: effectivePriority is restored to basePriority.
+     * When emergency is false: effectivePriority is restored to the aging-adjusted priority:
+     *   std::max(1, basePriority - agingLevel)
      * Base priority is strictly preserved.
      */
     void setEmergency(bool emergency) {
         isEmergency = emergency;
-        effectivePriority = emergency ? 1 : basePriority;
+        effectivePriority = emergency ? 1 : std::max(1, basePriority - agingLevel);
     }
+
+    // ── Aging calculation methods (Day 17) ───────────────────────────────────
+    /**
+     * @brief Computes number of completed aging intervals for continuous READY waiting duration.
+     * Formula: floor(elapsed_seconds / intervalSeconds)
+     * @param now Evaluation timestamp.
+     * @param intervalSeconds Configured aging threshold duration in seconds.
+     * @return Number of completed aging intervals (>= 0).
+     */
+    int calculateAgingLevels(const QDateTime &now, int intervalSeconds) const;
+
+    /**
+     * @brief Computes effective priority considering base priority, aging intervals, and emergency status.
+     * Formula: isEmergency ? 1 : std::max(1, basePriority - calculateAgingLevels(now, intervalSeconds))
+     */
+    int calculateEffectivePriority(const QDateTime &now, int intervalSeconds) const;
+
+    /**
+     * @brief Evaluates and updates agingLevel, effectivePriority, and lastAgingEvaluation.
+     * Only applies to processes in ProcessState::Ready.
+     * @return true if effectivePriority changed; false otherwise.
+     */
+    bool applyAging(const QDateTime &now, int intervalSeconds);
+
+    /**
+     * @brief Returns actual continuous waiting duration in seconds in READY state.
+     */
+    int readyWaitingDurationSeconds(const QDateTime &now = QDateTime()) const;
 
     // ── Performance metrics (uncalculated until scheduler runs Day 11/12) ────
     int             waitingTime        = -1; // seconds in ready queue (-1 = uncalculated/NULL)
@@ -173,6 +205,7 @@ struct Process {
      * @return true if state was updated.
      */
     bool transitionTo(ProcessState targetState, QString *outError = nullptr);
+    bool transitionTo(ProcessState targetState, const QDateTime &timestamp, QString *outError = nullptr);
 
     // ── String Conversions ───────────────────────────────────────────────────
     static QString      stateToString(ProcessState st);
