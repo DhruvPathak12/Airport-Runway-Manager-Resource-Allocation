@@ -6,16 +6,17 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QTimer>
-#include <QStackedWidget>
+#include <QTabWidget>
+#include <QTextEdit>
 
 #include "models/Process.h"
+#include "scheduler/StarvationSimulation.h"
 
 class ApplicationService;
 
 /**
- * @brief GUI view for monitoring the OS Priority Scheduler, Ready Queue, and Priority Aging.
- * Displays real-time process waiting times, base/effective priorities, aging levels,
- * emergency statuses, and provides controls for configuring and running Priority Aging.
+ * @brief GUI view for monitoring the OS Priority Scheduler, Ready Queue, and Priority Aging,
+ * and demonstrating Starvation and Starvation Prevention (Day 18).
  */
 class SchedulingView : public QWidget
 {
@@ -37,6 +38,7 @@ public slots:
     void refreshView();
 
 private slots:
+    // Live Tab slots
     void onStartAgingClicked();
     void onStopAgingClicked();
     void onIntervalChanged(int seconds);
@@ -44,14 +46,28 @@ private slots:
     void onDispatchClicked();
     void onClockTick();
 
+    // Demonstration Tab slots (Day 18)
+    void onRunWithoutAgingClicked();
+    void onRunWithAgingClicked();
+    void onStepSimulationClicked();
+    void onResetSimulationClicked();
+
 private:
     void setupUi();
+    QWidget* createLiveTab();
+    QWidget* createStarvationTab();
+
     void renderProcessesTable(const QList<Models::Process> &processes);
     void updateStatusBanner();
 
+    void renderSimulationTable(const SchedulerComponents::SimulationMetrics &metrics);
+    void updateComparisonSummary();
+
     ApplicationService *m_service = nullptr;
 
-    // UI controls
+    QTabWidget     *m_tabWidget           = nullptr;
+
+    // ── Live Tab controls ────────────────────────────────────────────────────
     QLabel         *m_statusBadge         = nullptr;
     QSpinBox       *m_intervalSpin        = nullptr;
     QPushButton    *m_startAgingButton    = nullptr;
@@ -61,11 +77,30 @@ private:
     QPushButton    *m_refreshButton       = nullptr;
     QLabel         *m_runningBanner       = nullptr;
     QLabel         *m_permNotice          = nullptr;
-
-    // Table
     QTableWidget   *m_tableWidget         = nullptr;
     QTimer         *m_clockTimer          = nullptr;
 
     QList<Models::Process> m_cachedProcesses;
-};
 
+    // ── Starvation Demonstration Tab controls (Day 18) ───────────────────────
+    QPushButton    *m_btnRunWithoutAging  = nullptr;
+    QPushButton    *m_btnRunWithAging     = nullptr;
+    QPushButton    *m_btnStepSim          = nullptr;
+    QPushButton    *m_btnResetSim         = nullptr;
+    QSpinBox       *m_simAgingIntervalSpin = nullptr;
+    QSpinBox       *m_simHorizonSpin      = nullptr;
+
+    QLabel         *m_simStatusBadge      = nullptr;
+    QLabel         *m_simClockLabel       = nullptr;
+    QLabel         *m_simPermNotice       = nullptr;
+
+    QTableWidget   *m_comparisonTable     = nullptr;
+    QLabel         *m_explanationBox      = nullptr;
+    QTableWidget   *m_simProcessesTable   = nullptr;
+
+    SchedulerComponents::StarvationSimulation m_interactiveSim;
+    SchedulerComponents::SimulationMetrics m_metricsWithoutAging;
+    SchedulerComponents::SimulationMetrics m_metricsWithAging;
+    bool m_hasRunWithoutAging = false;
+    bool m_hasRunWithAging = false;
+};

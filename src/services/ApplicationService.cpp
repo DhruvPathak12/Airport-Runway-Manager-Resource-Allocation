@@ -3783,7 +3783,30 @@ int ApplicationService::evaluateAging(const QDateTime &evaluationTime,
     return evaluated;
 }
 
+SchedulerComponents::SimulationMetrics ApplicationService::runStarvationSimulation(
+    SchedulerComponents::SimulationMode mode,
+    int agingIntervalSeconds,
+    int horizonSeconds,
+    QString *outError)
+{
+    if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+        if (outError) {
+            *outError = QStringLiteral("Permission denied: Role '%1' lacks action:ManageScheduling permission.")
+                            .arg(m_session.role());
+        }
+        return SchedulerComponents::SimulationMetrics();
+    }
 
+    SchedulerComponents::SimulationConfig config;
+    config.mode = mode;
+    config.agingIntervalSeconds = agingIntervalSeconds;
+    config.simulationHorizonSeconds = horizonSeconds;
 
+    if (!config.isValid(outError)) {
+        return SchedulerComponents::SimulationMetrics();
+    }
 
+    SchedulerComponents::StarvationSimulation sim(config);
+    return sim.runToHorizon();
+}
 

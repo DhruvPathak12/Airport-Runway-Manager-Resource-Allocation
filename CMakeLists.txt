@@ -62,6 +62,8 @@ set(APP_SOURCES
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
 
     # Resource layer (src/resource/)
     src/resource/ResourceManager.h
@@ -144,6 +146,8 @@ add_executable(TestAuthAndRBAC
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -182,6 +186,8 @@ add_executable(TestFlightManagement
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -221,6 +227,8 @@ add_executable(TestAircraftManagement
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -260,6 +268,8 @@ add_executable(TestProcessModel
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -299,6 +309,8 @@ add_executable(TestReadyQueueAndProcessStates
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -338,6 +350,8 @@ add_executable(TestPriorityScheduler
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -377,6 +391,8 @@ add_executable(TestSchedulingMetrics
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -417,6 +433,8 @@ add_executable(TestRunwayManagement
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -458,6 +476,8 @@ add_executable(TestRunwayResourceAllocation
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -502,6 +522,8 @@ add_executable(TestDynamicEmergencyPriority
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -546,6 +568,8 @@ add_executable(TestPriorityAging
     src/scheduler/ReadyQueue.cpp
     src/scheduler/AgingEngine.h
     src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
 )
@@ -564,3 +588,49 @@ target_include_directories(TestPriorityAging
 )
 
 add_test(NAME TestPriorityAging COMMAND TestPriorityAging)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Day 18: Starvation Simulation Test Suite
+# ─────────────────────────────────────────────────────────────────────────────
+add_executable(TestStarvationSimulation
+    tests/TestStarvationSimulation.cpp
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cpp
+    src/models/Session.h
+    src/models/Session.cpp
+    src/models/Flight.h
+    src/models/Aircraft.h
+    src/models/Runway.h
+    src/models/RunwayAssignment.h
+    src/models/Process.h
+    src/models/Process.cpp
+    src/services/ApplicationService.h
+    src/services/ApplicationService.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/scheduler/Scheduler.h
+    src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
+    src/resource/ResourceManager.h
+    src/resource/ResourceManager.cpp
+)
+
+target_link_libraries(TestStarvationSimulation
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestStarvationSimulation
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestStarvationSimulation COMMAND TestStarvationSimulation)

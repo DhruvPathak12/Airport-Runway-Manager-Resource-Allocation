@@ -936,7 +936,53 @@ All 6 CTest suites pass 100%:
   12. `TestPriorityAging`: Passed (33/33 tests passed)
 
 ### Scope Boundaries Confirmed (What was NOT implemented)
-- No dedicated starvation demonstration and prevention verification (Day 18).
+- No critical section, mutexes, condition variables, or locks (Days 19–20).
+- No MySQL multi-statement ACID transaction management (`SELECT FOR UPDATE`, `COMMIT/ROLLBACK`) (Days 21–22).
+- No multithreaded dispatching or background OS threads (Day 23).
+- No dashboard/monitoring visualization widgets (Day 24).
+
+---
+
+## DAY 18 — Starvation Demonstration & Prevention Verification ✅ COMPLETE
+
+### Files Created/Modified
+- `src/scheduler/StarvationSimulation.h` (NEW — deterministic starvation simulation engine header)
+- `src/scheduler/StarvationSimulation.cpp` (NEW — implemented discrete-event starvation and aging comparison)
+- `src/services/ApplicationService.h` (updated — declared `runStarvationSimulation` API with RBAC)
+- `src/services/ApplicationService.cpp` (updated — implemented `runStarvationSimulation` coordinator method)
+- `ui/SchedulingView.h` (updated — added `QTabWidget` and controls/tables for the Starvation Demonstration workbench)
+- `ui/SchedulingView.cpp` (updated — implemented Tab 1 live monitor and Tab 2 starvation demonstration workbench)
+- `tests/TestStarvationSimulation.cpp` (NEW — 28-point automated test suite for starvation and aging verification)
+- `CMakeLists.txt` (updated — added `StarvationSimulation` to targets and registered `TestStarvationSimulation`)
+- `docs/DAY18_STARVATION_DEMONSTRATION_REPORT.md` (NEW — comprehensive Day 18 verification report)
+- `PROJECT_STATUS.md` (updated — marked Day 18 complete)
+
+### Architecture Established
+- **Simulation Engine**: `StarvationSimulation` provides repeatable, deterministic simulation comparing Mode A (Without Aging) and Mode B (With Aging). Uses identical initial process set (P1..P5), identical periodic arrivals (P6..P12), identical burst times (20s), and identical FCFS tie-breaking.
+- **Empirical OS Starvation Proof**:
+  - In Mode A (No Aging), low-priority flight AI-101 ($P_{\text{base}} = 5$) waits indefinitely ($180\text{s}$) while higher-priority arrivals continuously receive scheduling preference (8 dispatches before P1; 0 dispatches for P1). Starvation Observed = TRUE.
+  - In Mode B (With Aging, $T_{\text{interval}} = 30\text{s}$), AI-101 dynamically improves effective priority from $5 \to 4 \to 3 \to 2 \to 1$. Upon reaching priority 1 at $t=120\text{s}$, deterministic tie-breaking (earliest arrival at $t=0\text{s}$) selects it for dispatch at $t=124\text{s}$. Starvation Mitigated = TRUE.
+- **Parity with Production**: Directly reuses Day 17 `Process::applyAging` and `ReadyQueue::reorder()` without formula duplication.
+- **GUI Integration**: Enhanced `SchedulingView` with a two-tab interface: live priority monitor and the interactive Starvation Demonstration workbench with side-by-side comparative metrics and action-level RBAC gating.
+- **Data Isolation**: 100% in-memory simulation; zero persistent database contamination.
+
+### Automated Test Results (28 / 28 Passed in TestStarvationSimulation; 13 / 13 Test Suites Passed 100%)
+- All 13 CTest suites pass 100% (303 total tests across suite):
+  1. `TestDatabaseConnectivity`: Passed
+  2. `TestAuthAndRBAC`: Passed
+  3. `TestFlightManagement`: Passed
+  4. `TestAircraftManagement`: Passed
+  5. `TestProcessModel`: Passed
+  6. `TestReadyQueueAndProcessStates`: Passed
+  7. `TestPriorityScheduler`: Passed
+  8. `TestSchedulingMetrics`: Passed
+  9. `TestRunwayManagement`: Passed
+  10. `TestRunwayResourceAllocation`: Passed
+  11. `TestDynamicEmergencyPriority`: Passed
+  12. `TestPriorityAging`: Passed
+  13. `TestStarvationSimulation`: Passed (28/28 tests passed)
+
+### Scope Boundaries Confirmed (What was NOT implemented)
 - No critical section, mutexes, condition variables, or locks (Days 19–20).
 - No MySQL multi-statement ACID transaction management (`SELECT FOR UPDATE`, `COMMIT/ROLLBACK`) (Days 21–22).
 - No multithreaded dispatching or background OS threads (Day 23).
@@ -945,7 +991,7 @@ All 6 CTest suites pass 100%:
 ---
 
 ## CURRENT MILESTONE
-Phase 2 / Day 17 — Priority Aging Implementation — COMPLETE & VERIFIED
+Phase 2 / Day 18 — Starvation Demonstration and Prevention Verification — COMPLETE & VERIFIED
 
 ## NEXT MILESTONE (PENDING EXPLICIT USER APPROVAL)
-Phase 2 / Day 18 — Starvation Demonstration and Prevention Verification
+Phase 2 / Day 19 — Critical Section & Mutual Exclusion Implementation

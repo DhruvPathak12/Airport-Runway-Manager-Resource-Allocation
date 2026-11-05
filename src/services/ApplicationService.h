@@ -13,6 +13,7 @@
 #include "models/RunwayAssignment.h"
 #include "scheduler/ReadyQueue.h"
 #include "scheduler/Scheduler.h"
+#include "scheduler/StarvationSimulation.h"
 
 class ResourceManager;
 
@@ -476,6 +477,24 @@ public:
     int evaluateAging(const QDateTime &evaluationTime = QDateTime(),
                       int *outUpdatedCount = nullptr,
                       QString *outError = nullptr);
+
+    // ── Starvation Demonstration Methods (Day 18) ───────────────────────────
+    /**
+     * @brief Executes a controlled starvation simulation comparing priority scheduling
+     * with or without priority aging.
+     * Enforces RBAC: Requires action:ManageScheduling (ATC or Admin).
+     *
+     * @param mode WithAging or WithoutAging.
+     * @param agingIntervalSeconds Configurable aging interval in seconds (default 30).
+     * @param horizonSeconds Simulation horizon in seconds (default 180).
+     * @param outError Optional string pointer receiving error description.
+     * @return SimulationMetrics containing measurable results.
+     */
+    SchedulerComponents::SimulationMetrics runStarvationSimulation(
+        SchedulerComponents::SimulationMode mode,
+        int agingIntervalSeconds = 30,
+        int horizonSeconds = 180,
+        QString *outError = nullptr);
 
 signals:
     /**
