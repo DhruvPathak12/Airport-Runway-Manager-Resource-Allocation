@@ -345,6 +345,71 @@ QString DatabaseManager::username() const
     return m_config.value(QStringLiteral("username"));
 }
 
+QSqlDatabase DatabaseManager::database() const
+{
+    if (QSqlDatabase::contains(CONNECTION_NAME)) {
+        return QSqlDatabase::database(CONNECTION_NAME);
+    }
+    return QSqlDatabase();
+}
+
+bool DatabaseManager::beginTransaction()
+{
+    if (!isConnected()) {
+        setSanitizedError(QStringLiteral("Cannot begin transaction: database is not connected."));
+        return false;
+    }
+    QSqlDatabase db = database();
+    if (!db.isOpen()) {
+        setSanitizedError(QStringLiteral("Cannot begin transaction: database connection is closed."));
+        return false;
+    }
+    bool ok = db.transaction();
+    if (!ok) {
+        setSanitizedError(db.lastError().text());
+        qWarning() << "[DatabaseManager] beginTransaction failed:" << m_lastError;
+    }
+    return ok;
+}
+
+bool DatabaseManager::commitTransaction()
+{
+    if (!isConnected()) {
+        setSanitizedError(QStringLiteral("Cannot commit transaction: database is not connected."));
+        return false;
+    }
+    QSqlDatabase db = database();
+    if (!db.isOpen()) {
+        setSanitizedError(QStringLiteral("Cannot commit transaction: database connection is closed."));
+        return false;
+    }
+    bool ok = db.commit();
+    if (!ok) {
+        setSanitizedError(db.lastError().text());
+        qWarning() << "[DatabaseManager] commitTransaction failed:" << m_lastError;
+    }
+    return ok;
+}
+
+bool DatabaseManager::rollbackTransaction()
+{
+    if (!isConnected()) {
+        setSanitizedError(QStringLiteral("Cannot rollback transaction: database is not connected."));
+        return false;
+    }
+    QSqlDatabase db = database();
+    if (!db.isOpen()) {
+        setSanitizedError(QStringLiteral("Cannot rollback transaction: database connection is closed."));
+        return false;
+    }
+    bool ok = db.rollback();
+    if (!ok) {
+        setSanitizedError(db.lastError().text());
+        qWarning() << "[DatabaseManager] rollbackTransaction failed:" << m_lastError;
+    }
+    return ok;
+}
+
 void DatabaseManager::setSanitizedError(const QString &rawError)
 {
     QString sanitized = rawError.trimmed();

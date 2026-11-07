@@ -756,3 +756,51 @@ target_include_directories(TestConcurrentRunwayAllocation
 )
 
 add_test(NAME TestConcurrentRunwayAllocation COMMAND TestConcurrentRunwayAllocation)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Day 21: MySQL Transactions & Atomic Operations Test Suite
+# ─────────────────────────────────────────────────────────────────────────────
+add_executable(TestDatabaseTransactions
+    tests/TestDatabaseTransactions.cpp
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cpp
+    src/models/Session.h
+    src/models/Session.cpp
+    src/models/Flight.h
+    src/models/Aircraft.h
+    src/models/Runway.h
+    src/models/RunwayAssignment.h
+    src/models/Process.h
+    src/models/Process.cpp
+    src/services/ApplicationService.h
+    src/services/ApplicationService.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/scheduler/Scheduler.h
+    src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
+    src/resource/ResourceManager.h
+    src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
+)
+
+target_link_libraries(TestDatabaseTransactions
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestDatabaseTransactions
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestDatabaseTransactions COMMAND TestDatabaseTransactions)

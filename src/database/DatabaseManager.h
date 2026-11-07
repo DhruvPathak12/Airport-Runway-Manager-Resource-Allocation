@@ -110,6 +110,29 @@ public:
      */
     static const QString CONNECTION_NAME;
 
+    /**
+     * @brief Returns the named QSqlDatabase instance for this manager.
+     */
+    QSqlDatabase database() const;
+
+    /**
+     * @brief Begins a database transaction on the named connection.
+     * @return true if the transaction started successfully.
+     */
+    bool beginTransaction();
+
+    /**
+     * @brief Commits the active database transaction on the named connection.
+     * @return true if commit succeeded.
+     */
+    bool commitTransaction();
+
+    /**
+     * @brief Rolls back the active database transaction on the named connection.
+     * @return true if rollback succeeded.
+     */
+    bool rollbackTransaction();
+
 private:
     DatabaseManager();
     ~DatabaseManager();

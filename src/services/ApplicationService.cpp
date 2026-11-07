@@ -299,19 +299,31 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
         }
     }
 
-    // ── 1. Verify Runway existence, type, and availability ───────────────────
+    // ── Database Transaction Boundary (Day 21) ──────────────────────────────
+    // Begin atomic transaction to ensure all allocation mutations either commit together
+    // or roll back cleanly without leaving partial records or orphaned assignments.
+    if (!db.transaction()) {
+        qWarning() << "[ApplicationService] allocateRunway: Failed to begin database transaction:" << db.lastError().text();
+        if (outError) {
+            *outError = QStringLiteral("Failed to begin database transaction: %1").arg(db.lastError().text());
+        }
+        return Models::AllocationResult::DatabaseError;
+    }
+
+    // ── 1. Verify Runway existence, type, and availability (row lock) ───────
     QString runwayNumber;
     QString runwayType;
     QString runwayStatus;
     {
         QSqlQuery rwQuery(db);
-        rwQuery.prepare(QStringLiteral("SELECT runway_number, runway_type, status FROM runways WHERE runway_id = :id;"));
+        rwQuery.prepare(QStringLiteral("SELECT runway_number, runway_type, status FROM runways WHERE runway_id = :id FOR UPDATE;"));
         rwQuery.bindValue(QStringLiteral(":id"), runwayId);
         if (!rwQuery.exec()) {
             qWarning() << "[ApplicationService] allocateRunway: runway check failed:" << rwQuery.lastError().text();
             if (outError) {
                 *outError = QStringLiteral("Failed to query runway state: %1").arg(rwQuery.lastError().text());
             }
+            db.rollback();
             return Models::AllocationResult::DatabaseError;
         }
 
@@ -319,6 +331,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
             if (outError) {
                 *outError = QStringLiteral("Runway with ID %1 was not found in the database.").arg(runwayId);
             }
+            db.rollback();
             return Models::AllocationResult::RunwayNotFound;
         }
 
@@ -331,18 +344,19 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
                 *outError = QStringLiteral("Runway '%1' is currently '%2' and cannot be allocated. Runways must be Available.")
                                 .arg(runwayNumber, runwayStatus);
             }
+            db.rollback();
             return Models::AllocationResult::RunwayUnavailable;
         }
     }
 
-    // ── 2. Reject second active assignment to the same runway ───────────────
+    // ── 2. Reject second active assignment to the same runway (row lock) ────
     {
         QSqlQuery rwAssignQuery(db);
         rwAssignQuery.prepare(QStringLiteral(
             "SELECT ra.assignment_id, f.flight_number "
             "FROM runway_assignments ra "
             "LEFT JOIN flights f ON ra.flight_id = f.flight_id "
-            "WHERE ra.runway_id = :rid AND ra.status = 'Active';"
+            "WHERE ra.runway_id = :rid AND ra.status = 'Active' FOR UPDATE;"
         ));
         rwAssignQuery.bindValue(QStringLiteral(":rid"), runwayId);
         if (!rwAssignQuery.exec()) {
@@ -350,6 +364,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
             if (outError) {
                 *outError = QStringLiteral("Failed to check active runway assignments: %1").arg(rwAssignQuery.lastError().text());
             }
+            db.rollback();
             return Models::AllocationResult::DatabaseError;
         }
 
@@ -362,6 +377,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
                                 .arg(activeAssignId)
                                 .arg(assignedFlightNum.isEmpty() ? QString() : QStringLiteral(" for flight %1").arg(assignedFlightNum));
             }
+            db.rollback();
             return Models::AllocationResult::ConflictExistingAssignment;
         }
     }
@@ -373,7 +389,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
     {
         QSqlQuery fQuery(db);
         fQuery.prepare(QStringLiteral(
-            "SELECT flight_number, flight_type, operational_status FROM flights WHERE flight_id = :fid;"
+            "SELECT flight_number, flight_type, operational_status FROM flights WHERE flight_id = :fid FOR UPDATE;"
         ));
         fQuery.bindValue(QStringLiteral(":fid"), flightId);
         if (!fQuery.exec()) {
@@ -381,6 +397,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
             if (outError) {
                 *outError = QStringLiteral("Failed to query flight state: %1").arg(fQuery.lastError().text());
             }
+            db.rollback();
             return Models::AllocationResult::DatabaseError;
         }
 
@@ -388,6 +405,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
             if (outError) {
                 *outError = QStringLiteral("Flight with ID %1 was not found in the database.").arg(flightId);
             }
+            db.rollback();
             return Models::AllocationResult::FlightNotFound;
         }
 
@@ -403,6 +421,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
                 *outError = QStringLiteral("Flight '%1' is in terminal status '%2' and cannot be allocated to a runway.")
                                 .arg(flightNumber, flightStatus);
             }
+            db.rollback();
             return Models::AllocationResult::FlightIneligible;
         }
 
@@ -413,6 +432,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
                 *outError = QStringLiteral("Runway '%1' is designated for Landing only, but flight '%2' is a Departure.")
                                 .arg(runwayNumber, flightNumber);
             }
+            db.rollback();
             return Models::AllocationResult::FlightIneligible;
         }
 
@@ -422,6 +442,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
                 *outError = QStringLiteral("Runway '%1' is designated for Takeoff only, but flight '%2' is an Arrival.")
                                 .arg(runwayNumber, flightNumber);
             }
+            db.rollback();
             return Models::AllocationResult::FlightIneligible;
         }
     }
@@ -433,7 +454,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
             "SELECT ra.assignment_id, r.runway_number "
             "FROM runway_assignments ra "
             "LEFT JOIN runways r ON ra.runway_id = r.runway_id "
-            "WHERE ra.flight_id = :fid AND ra.status = 'Active';"
+            "WHERE ra.flight_id = :fid AND ra.status = 'Active' FOR UPDATE;"
         ));
         fAssignQuery.bindValue(QStringLiteral(":fid"), flightId);
         if (!fAssignQuery.exec()) {
@@ -441,6 +462,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
             if (outError) {
                 *outError = QStringLiteral("Failed to check existing flight assignment: %1").arg(fAssignQuery.lastError().text());
             }
+            db.rollback();
             return Models::AllocationResult::DatabaseError;
         }
 
@@ -453,6 +475,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
                                 .arg(activeAssignId)
                                 .arg(activeRunwayNum.isEmpty() ? QStringLiteral("?") : activeRunwayNum);
             }
+            db.rollback();
             return Models::AllocationResult::ConflictExistingAssignment;
         }
     }
@@ -460,7 +483,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
     // ── 5. Verify process simulation state in scheduling_queue if present ───
     {
         QSqlQuery qQuery(db);
-        qQuery.prepare(QStringLiteral("SELECT process_state FROM scheduling_queue WHERE flight_id = :fid;"));
+        qQuery.prepare(QStringLiteral("SELECT process_state FROM scheduling_queue WHERE flight_id = :fid FOR UPDATE;"));
         qQuery.bindValue(QStringLiteral(":fid"), flightId);
         if (qQuery.exec() && qQuery.next()) {
             QString procState = qQuery.value(0).toString();
@@ -469,12 +492,13 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
                     *outError = QStringLiteral("Flight process for '%1' is in Completed state and cannot be allocated.")
                                     .arg(flightNumber);
                 }
+                db.rollback();
                 return Models::AllocationResult::FlightIneligible;
             }
         }
     }
 
-    // ── 6. Persist Assignment and Update States ──────────────────────────────
+    // ── 6. Persist Assignment and Update States inside Transaction ───────────
     // 6a. Insert into runway_assignments
     QVariant assignedByVal(QMetaType(QMetaType::Int));
     if (m_session.userId() > 0) {
@@ -501,6 +525,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
             *outError = QStringLiteral("Failed to insert runway assignment record: %1")
                             .arg(insertQuery.lastError().text());
         }
+        db.rollback();
         if (m_resourceManager) {
             m_resourceManager->rollbackAllocationUnlocked(runwayId, flightId);
         }
@@ -517,6 +542,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
             *outError = QStringLiteral("Failed to update runway occupancy status: %1")
                             .arg(updateRwQuery.lastError().text());
         }
+        db.rollback();
         if (m_resourceManager) {
             m_resourceManager->rollbackAllocationUnlocked(runwayId, flightId);
         }
@@ -532,15 +558,24 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
         ));
         updateFlightQuery.bindValue(QStringLiteral(":fid"), flightId);
         if (!updateFlightQuery.exec()) {
-            qWarning() << "[ApplicationService] allocateRunway: UPDATE flight status warning:" << updateFlightQuery.lastError().text();
+            qWarning() << "[ApplicationService] allocateRunway: UPDATE flight status failed:" << updateFlightQuery.lastError().text();
+            if (outError) {
+                *outError = QStringLiteral("Failed to update flight operational status: %1")
+                                .arg(updateFlightQuery.lastError().text());
+            }
+            db.rollback();
+            if (m_resourceManager) {
+                m_resourceManager->rollbackAllocationUnlocked(runwayId, flightId);
+            }
+            return Models::AllocationResult::DatabaseError;
         }
     }
 
-    // 6d. Insert audit log record into operation_logs
+    // 6d. Insert audit log record into operation_logs with transaction_status = 'Committed'
     QSqlQuery logQuery(db);
     logQuery.prepare(QStringLiteral(
         "INSERT INTO operation_logs (user_id, operation_type, flight_id, runway_id, transaction_status, message, created_at) "
-        "VALUES (:uid, 'RUNWAY_ASSIGN', :fid, :rid, 'N/A', :msg, NOW());"
+        "VALUES (:uid, 'RUNWAY_ASSIGN', :fid, :rid, 'Committed', :msg, NOW());"
     ));
     logQuery.bindValue(QStringLiteral(":uid"), assignedByVal);
     logQuery.bindValue(QStringLiteral(":fid"), flightId);
@@ -548,10 +583,35 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
     logQuery.bindValue(QStringLiteral(":msg"), QStringLiteral("Runway %1 allocated to flight %2 by %3.")
                                                   .arg(runwayNumber, flightNumber, m_session.username()));
     if (!logQuery.exec()) {
-        qWarning() << "[ApplicationService] allocateRunway: operation_logs warning:" << logQuery.lastError().text();
+        qWarning() << "[ApplicationService] allocateRunway: operation_logs failed:" << logQuery.lastError().text();
+        if (outError) {
+            *outError = QStringLiteral("Failed to record allocation audit log: %1")
+                            .arg(logQuery.lastError().text());
+        }
+        db.rollback();
+        if (m_resourceManager) {
+            m_resourceManager->rollbackAllocationUnlocked(runwayId, flightId);
+        }
+        return Models::AllocationResult::DatabaseError;
     }
 
-    // ── 7. Notify UI and Subsystems ─────────────────────────────────────────
+    // 6e. Commit the atomic transaction
+    if (!db.commit()) {
+        qWarning() << "[ApplicationService] allocateRunway: COMMIT failed:" << db.lastError().text();
+        QString commitErr = db.lastError().text();
+        if (!db.rollback()) {
+            qWarning() << "[ApplicationService] allocateRunway: ROLLBACK after commit failure also failed:" << db.lastError().text();
+        }
+        if (outError) {
+            *outError = QStringLiteral("Failed to commit runway allocation transaction: %1").arg(commitErr);
+        }
+        if (m_resourceManager) {
+            m_resourceManager->rollbackAllocationUnlocked(runwayId, flightId);
+        }
+        return Models::AllocationResult::DatabaseError;
+    }
+
+    // ── 7. Notify In-Memory ResourceManager and Subsystems ───────────────────
     if (m_resourceManager) {
         m_resourceManager->confirmAllocationUnlocked(runwayId, flightId);
     }
@@ -620,14 +680,26 @@ bool ApplicationService::releaseRunwayResource(int runwayId, QString *outError)
             m_resourceManager->resourceMutex(), runwayId, m_resourceManager);
     }
 
-    // Verify runway exists
+    // ── Database Transaction Boundary (Day 21) ──────────────────────────────
+    // Begin atomic transaction to ensure runway release, assignment status update,
+    // and operation log record either commit together or roll back cleanly.
+    if (!db.transaction()) {
+        qWarning() << "[ApplicationService] releaseRunwayResource: Failed to begin transaction:" << db.lastError().text();
+        if (outError) {
+            *outError = QStringLiteral("Failed to begin database transaction for runway release: %1").arg(db.lastError().text());
+        }
+        return false;
+    }
+
+    // Verify runway exists and acquire row lock
     QString runwayNumber;
     QString currentStatus;
     {
         QSqlQuery rwQuery(db);
-        rwQuery.prepare(QStringLiteral("SELECT runway_number, status FROM runways WHERE runway_id = :id;"));
+        rwQuery.prepare(QStringLiteral("SELECT runway_number, status FROM runways WHERE runway_id = :id FOR UPDATE;"));
         rwQuery.bindValue(QStringLiteral(":id"), runwayId);
         if (!rwQuery.exec() || !rwQuery.next()) {
+            db.rollback();
             if (outError) {
                 *outError = QStringLiteral("Runway with ID %1 was not found.").arg(runwayId);
             }
@@ -637,6 +709,7 @@ bool ApplicationService::releaseRunwayResource(int runwayId, QString *outError)
         currentStatus = rwQuery.value(1).toString();
 
         if (currentStatus.compare(QStringLiteral("Maintenance"), Qt::CaseInsensitive) == 0) {
+            db.rollback();
             if (outError) {
                 *outError = QStringLiteral("Runway '%1' is currently in Maintenance. Return to Available via maintenance toggle.")
                                 .arg(runwayNumber);
@@ -645,7 +718,7 @@ bool ApplicationService::releaseRunwayResource(int runwayId, QString *outError)
         }
     }
 
-    // Find active assignment
+    // Find active assignment and acquire row lock
     int activeAssignmentId = 0;
     int assignedFlightId = 0;
     QString flightNumber;
@@ -655,10 +728,18 @@ bool ApplicationService::releaseRunwayResource(int runwayId, QString *outError)
             "SELECT ra.assignment_id, ra.flight_id, f.flight_number "
             "FROM runway_assignments ra "
             "LEFT JOIN flights f ON ra.flight_id = f.flight_id "
-            "WHERE ra.runway_id = :rid AND ra.status = 'Active';"
+            "WHERE ra.runway_id = :rid AND ra.status = 'Active' FOR UPDATE;"
         ));
         raQuery.bindValue(QStringLiteral(":rid"), runwayId);
-        if (raQuery.exec() && raQuery.next()) {
+        if (!raQuery.exec()) {
+            qWarning() << "[ApplicationService] releaseRunwayResource: active assignment check failed:" << raQuery.lastError().text();
+            db.rollback();
+            if (outError) {
+                *outError = QStringLiteral("Failed to check active runway assignment: %1").arg(raQuery.lastError().text());
+            }
+            return false;
+        }
+        if (raQuery.next()) {
             activeAssignmentId = raQuery.value(0).toInt();
             assignedFlightId   = raQuery.value(1).toInt();
             flightNumber       = raQuery.value(2).toString();
@@ -674,6 +755,7 @@ bool ApplicationService::releaseRunwayResource(int runwayId, QString *outError)
         updateRaQuery.bindValue(QStringLiteral(":aid"), activeAssignmentId);
         if (!updateRaQuery.exec()) {
             qWarning() << "[ApplicationService] releaseRunway: UPDATE runway_assignments failed:" << updateRaQuery.lastError().text();
+            db.rollback();
             if (outError) {
                 *outError = QStringLiteral("Failed to update runway assignment state: %1").arg(updateRaQuery.lastError().text());
             }
@@ -687,13 +769,14 @@ bool ApplicationService::releaseRunwayResource(int runwayId, QString *outError)
     updateRwQuery.bindValue(QStringLiteral(":rid"), runwayId);
     if (!updateRwQuery.exec()) {
         qWarning() << "[ApplicationService] releaseRunway: UPDATE runways status failed:" << updateRwQuery.lastError().text();
+        db.rollback();
         if (outError) {
             *outError = QStringLiteral("Failed to update runway status to Available: %1").arg(updateRwQuery.lastError().text());
         }
         return false;
     }
 
-    // Audit log
+    // Audit log with transaction_status = 'Committed'
     QVariant releaseUserVal(QMetaType(QMetaType::Int));
     if (m_session.userId() > 0) {
         QSqlQuery userCheck(db);
@@ -707,7 +790,7 @@ bool ApplicationService::releaseRunwayResource(int runwayId, QString *outError)
     QSqlQuery logQuery(db);
     logQuery.prepare(QStringLiteral(
         "INSERT INTO operation_logs (user_id, operation_type, flight_id, runway_id, transaction_status, message, created_at) "
-        "VALUES (:uid, 'RUNWAY_RELEASE', :fid, :rid, 'N/A', :msg, NOW());"
+        "VALUES (:uid, 'RUNWAY_RELEASE', :fid, :rid, 'Committed', :msg, NOW());"
     ));
     logQuery.bindValue(QStringLiteral(":uid"), releaseUserVal);
     if (assignedFlightId > 0) {
@@ -721,7 +804,25 @@ bool ApplicationService::releaseRunwayResource(int runwayId, QString *outError)
                                                   .arg(flightNumber.isEmpty() ? QString() : QStringLiteral(" from flight %1").arg(flightNumber))
                                                   .arg(m_session.username()));
     if (!logQuery.exec()) {
-        qWarning() << "[ApplicationService] releaseRunway: operation_logs warning:" << logQuery.lastError().text();
+        qWarning() << "[ApplicationService] releaseRunway: operation_logs failed:" << logQuery.lastError().text();
+        db.rollback();
+        if (outError) {
+            *outError = QStringLiteral("Failed to record release audit log: %1").arg(logQuery.lastError().text());
+        }
+        return false;
+    }
+
+    // Commit transaction
+    if (!db.commit()) {
+        qWarning() << "[ApplicationService] releaseRunwayResource: COMMIT failed:" << db.lastError().text();
+        QString commitErr = db.lastError().text();
+        if (!db.rollback()) {
+            qWarning() << "[ApplicationService] releaseRunwayResource: ROLLBACK after commit failure also failed:" << db.lastError().text();
+        }
+        if (outError) {
+            *outError = QStringLiteral("Failed to commit runway release transaction: %1").arg(commitErr);
+        }
+        return false;
     }
 
     if (m_resourceManager) {
