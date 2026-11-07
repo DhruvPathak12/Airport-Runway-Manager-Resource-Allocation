@@ -68,6 +68,8 @@ set(APP_SOURCES
     # Resource layer (src/resource/)
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 
     # Utils (src/utils/)
     src/utils/PasswordUtils.h
@@ -150,6 +152,8 @@ add_executable(TestAuthAndRBAC
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestAuthAndRBAC
@@ -190,6 +194,8 @@ add_executable(TestFlightManagement
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestFlightManagement
@@ -231,6 +237,8 @@ add_executable(TestAircraftManagement
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestAircraftManagement
@@ -272,6 +280,8 @@ add_executable(TestProcessModel
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestProcessModel
@@ -313,6 +323,8 @@ add_executable(TestReadyQueueAndProcessStates
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestReadyQueueAndProcessStates
@@ -354,6 +366,8 @@ add_executable(TestPriorityScheduler
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestPriorityScheduler
@@ -395,6 +409,8 @@ add_executable(TestSchedulingMetrics
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestSchedulingMetrics
@@ -437,6 +453,8 @@ add_executable(TestRunwayManagement
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestRunwayManagement
@@ -480,6 +498,8 @@ add_executable(TestRunwayResourceAllocation
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestRunwayResourceAllocation
@@ -526,6 +546,8 @@ add_executable(TestDynamicEmergencyPriority
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestDynamicEmergencyPriority
@@ -572,6 +594,8 @@ add_executable(TestPriorityAging
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestPriorityAging
@@ -618,6 +642,8 @@ add_executable(TestStarvationSimulation
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestStarvationSimulation
@@ -664,6 +690,8 @@ add_executable(TestCriticalSectionAndMutualExclusion
     src/scheduler/StarvationSimulation.cpp
     src/resource/ResourceManager.h
     src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
 )
 
 target_link_libraries(TestCriticalSectionAndMutualExclusion
@@ -680,3 +708,51 @@ target_include_directories(TestCriticalSectionAndMutualExclusion
 )
 
 add_test(NAME TestCriticalSectionAndMutualExclusion COMMAND TestCriticalSectionAndMutualExclusion)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Day 20: C++ Threads & Synchronization Test Suite
+# ─────────────────────────────────────────────────────────────────────────────
+add_executable(TestConcurrentRunwayAllocation
+    tests/TestConcurrentRunwayAllocation.cpp
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cpp
+    src/models/Session.h
+    src/models/Session.cpp
+    src/models/Flight.h
+    src/models/Aircraft.h
+    src/models/Runway.h
+    src/models/RunwayAssignment.h
+    src/models/Process.h
+    src/models/Process.cpp
+    src/services/ApplicationService.h
+    src/services/ApplicationService.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/scheduler/Scheduler.h
+    src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
+    src/resource/ResourceManager.h
+    src/resource/ResourceManager.cpp
+    src/resource/ConcurrentAllocationDemo.h
+    src/resource/ConcurrentAllocationDemo.cpp
+)
+
+target_link_libraries(TestConcurrentRunwayAllocation
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestConcurrentRunwayAllocation
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestConcurrentRunwayAllocation COMMAND TestConcurrentRunwayAllocation)

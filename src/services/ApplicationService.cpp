@@ -3885,3 +3885,51 @@ SchedulerComponents::SimulationMetrics ApplicationService::runStarvationSimulati
     return sim.runToHorizon();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Concurrent Runway Allocation Demonstration Methods (Day 20)
+// ─────────────────────────────────────────────────────────────────────────────
+
+ConcurrentAllocationDemo::DemoReport ApplicationService::runConcurrentAllocationDemo(
+    int runwayId,
+    int threadCount,
+    QString *outError)
+{
+    if (threadCount <= 0) {
+        if (outError) {
+            *outError = QStringLiteral("Invalid thread count: %1. Must be greater than zero.").arg(threadCount);
+        }
+        return ConcurrentAllocationDemo::DemoReport{};
+    }
+
+    QList<ConcurrentAllocationDemo::Request> reqs = ConcurrentAllocationDemo::createDefaultRequests(runwayId, threadCount);
+    return runConcurrentAllocationDemo(runwayId, reqs, outError);
+}
+
+ConcurrentAllocationDemo::DemoReport ApplicationService::runConcurrentAllocationDemo(
+    int runwayId,
+    const QList<ConcurrentAllocationDemo::Request> &customRequests,
+    QString *outError)
+{
+    if (!m_session.hasPermission(QStringLiteral("action:RunwayAllocation")) &&
+        !m_session.hasPermission(QStringLiteral("action:ManageRunways")) &&
+        !m_session.isAdmin() && !m_session.isATC()) {
+        if (outError) {
+            *outError = QStringLiteral("Permission denied: Role '%1' lacks runway allocation authority.")
+                            .arg(m_session.role());
+        }
+        return ConcurrentAllocationDemo::DemoReport{};
+    }
+
+    if (!m_resourceManager) {
+        if (outError) {
+            *outError = QStringLiteral("ResourceManager is not available.");
+        }
+        return ConcurrentAllocationDemo::DemoReport{};
+    }
+
+    ConcurrentAllocationDemo demo(m_resourceManager);
+    ConcurrentAllocationDemo::DemoReport report = demo.execute(runwayId, customRequests);
+    emit runwaysChanged();
+    return report;
+}
+

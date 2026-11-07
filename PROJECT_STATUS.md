@@ -1042,8 +1042,55 @@ All 6 CTest suites pass 100%:
 
 ---
 
+## DAY 20 — C++ Threads & Synchronization Implementation ✅ COMPLETE
+
+### Files Created/Modified
+- `src/resource/ConcurrentAllocationDemo.h` (NEW — header for concurrent worker-thread engine, condition-variable start barrier, and thread results)
+- `src/resource/ConcurrentAllocationDemo.cpp` (NEW — implemented thread lifecycle, start barrier synchronization, exception safety, and result collection)
+- `src/services/ApplicationService.h` (updated — declared `runConcurrentAllocationDemo` APIs with RBAC)
+- `src/services/ApplicationService.cpp` (updated — implemented `runConcurrentAllocationDemo` coordinator methods)
+- `ui/RunwaysView.h` (updated — added two-tab interface, Tab 2 controls, metrics dashboard labels, and queued signal slots)
+- `ui/RunwaysView.cpp` (updated — implemented `createLiveTab` and `createConcurrentTab`, asynchronous execution, and real-time thread result delivery)
+- `tests/TestConcurrentRunwayAllocation.cpp` (NEW — 30-point automated test suite for C++ threads, contention, synchronization, and regressions)
+- `CMakeLists.txt` (updated — added `ConcurrentAllocationDemo` sources to targets and registered `TestConcurrentRunwayAllocation`)
+- `docs/DAY20_CPP_THREADS_SYNCHRONIZATION_REPORT.md` (NEW — comprehensive Day 20 technical report)
+- `PROJECT_STATUS.md` (updated — marked Day 20 complete)
+
+### Architecture Established
+- **C++17 Threading & Synchronization**: Multiple concurrent `std::thread` workers simulate simultaneous flight requests competing for shared runway resources.
+- **Start Barrier Synchronization**: `std::condition_variable` coordinates all worker threads to wait until fully spawned and releases them simultaneously, creating genuine resource contention.
+- **Mutual Exclusion & Race Condition Prevention**: Central `std::mutex m_mutex;` inside `ResourceManager` guarantees serialized state evaluation and mutation. Exactly one thread wins the runway reservation; remaining contenders receive explicit contention conflict errors without corrupting in-memory invariants.
+- **Deterministic Lifecycle Management**: All worker threads and coordinator threads are explicitly joined (`join()`). Zero detached threads (`detach()` never called). Exception containment prevents uncaught exceptions from triggering `std::terminate`.
+- **Thread-Safe GUI Integration**: Two-tab `RunwaysView` interface. Worker threads never touch Qt widgets directly; all updates and completion reports are delivered to the main GUI thread via `QMetaObject::invokeMethod(..., Qt::QueuedConnection)`. Asynchronous coordinator execution ensures the UI never freezes.
+- **Concurrency vs DBMS Boundaries**: In-process C++ thread synchronization explicitly distinguished from database-level multi-statement ACID transactions and row-level locking (scheduled for Days 21–22).
+
+### Automated Test Results (30 / 30 Passed in TestConcurrentRunwayAllocation; 15 / 15 Test Suites Passed 100%)
+- All 15 CTest suites pass 100% (365 total tests across suite):
+  1. `TestDatabaseConnectivity`: Passed
+  2. `TestAuthAndRBAC`: Passed
+  3. `TestFlightManagement`: Passed
+  4. `TestAircraftManagement`: Passed
+  5. `TestProcessModel`: Passed
+  6. `TestReadyQueueAndProcessStates`: Passed
+  7. `TestPriorityScheduler`: Passed
+  8. `TestSchedulingMetrics`: Passed
+  9. `TestRunwayManagement`: Passed
+  10. `TestRunwayResourceAllocation`: Passed
+  11. `TestDynamicEmergencyPriority`: Passed
+  12. `TestPriorityAging`: Passed
+  13. `TestStarvationSimulation`: Passed
+  14. `TestCriticalSectionAndMutualExclusion`: Passed
+  15. `TestConcurrentRunwayAllocation`: Passed (30/30 tests passed, 32/32 total checks passed)
+
+### Scope Boundaries Confirmed (What was NOT implemented)
+- No MySQL multi-statement ACID transaction management (`SELECT FOR UPDATE`, `START TRANSACTION`, `COMMIT/ROLLBACK`) (Days 21–22).
+- No multithreaded dispatching or background OS scheduling threads (Day 23).
+- No final dashboard or monitoring visualization widgets (Day 24).
+
+---
+
 ## CURRENT MILESTONE
-Phase 2 / Day 19 — Critical Section & Mutual Exclusion Implementation — COMPLETE & VERIFIED
+Phase 2 / Day 20 — C++ Threads & Synchronization Implementation — COMPLETE & VERIFIED
 
 ## NEXT MILESTONE (PENDING EXPLICIT USER APPROVAL)
-Phase 2 / Day 20 — Advanced Concurrency & Synchronization
+Phase 2 / Day 21 — ACID Transactions & Database Concurrency Implementation

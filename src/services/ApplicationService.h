@@ -14,6 +14,7 @@
 #include "scheduler/ReadyQueue.h"
 #include "scheduler/Scheduler.h"
 #include "scheduler/StarvationSimulation.h"
+#include "resource/ConcurrentAllocationDemo.h"
 
 class ResourceManager;
 
@@ -202,6 +203,27 @@ public:
      * Allowed for: Admin (full update) or Airport Operator (status/maintenance).
      */
     bool updateRunway(const Models::Runway &runway, QString *outError = nullptr);
+
+    // ── Concurrent Runway Allocation Demonstration Methods (Day 20) ───────────
+    /**
+     * @brief Executes a controlled demonstration of concurrent C++ threads competing for a shared runway.
+     * Enforces RBAC: Requires action:RunwayAllocation or ATC / Admin role.
+     * Operates purely in-memory on ResourceManager without modifying persistent MySQL records.
+     *
+     * @param runwayId Database ID of the runway to contend for.
+     * @param threadCount Number of competing worker threads (default 3).
+     * @param outError Optional output receiving descriptive error if unauthorized or misconfigured.
+     * @return ConcurrentAllocationDemo::DemoReport with verified mutual exclusion metrics.
+     */
+    ConcurrentAllocationDemo::DemoReport runConcurrentAllocationDemo(
+        int runwayId,
+        int threadCount = 3,
+        QString *outError = nullptr);
+
+    ConcurrentAllocationDemo::DemoReport runConcurrentAllocationDemo(
+        int runwayId,
+        const QList<ConcurrentAllocationDemo::Request> &customRequests,
+        QString *outError = nullptr);
 
     // ── Flight Management Methods (Day 7) ────────────────────────────────────
     /**

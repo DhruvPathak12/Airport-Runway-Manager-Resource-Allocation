@@ -20,6 +20,11 @@ RunwaysView::RunwaysView(ApplicationService *service, QWidget *parent)
         connect(m_service, &ApplicationService::runwaysChanged, this, &RunwaysView::refreshRunways);
 
         if (m_service->resourceManager()) {
+            m_demoEngine = new ConcurrentAllocationDemo(m_service->resourceManager(), this);
+            connect(m_demoEngine, &ConcurrentAllocationDemo::demoStarted, this, &RunwaysView::onDemoStarted);
+            connect(m_demoEngine, &ConcurrentAllocationDemo::threadStateChanged, this, &RunwaysView::onThreadStateChanged);
+            connect(m_demoEngine, &ConcurrentAllocationDemo::demoFinished, this, &RunwaysView::onDemoFinished);
+
             connect(m_service->resourceManager(), &ResourceManager::criticalSectionEntered,
                     this, [this](int runwayId, int flightId) {
                         if (m_csBanner) {
@@ -68,11 +73,293 @@ RunwaysView::RunwaysView(ApplicationService *service, QWidget *parent)
     }
 }
 
+RunwaysView::~RunwaysView()
+{
+    if (m_demoEngine) {
+        m_demoEngine->cancelAndJoin();
+    }
+}
+
 void RunwaysView::setupUi()
 {
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(24, 20, 24, 20);
-    mainLayout->setSpacing(16);
+    mainLayout->setContentsMargins(16, 16, 16, 16);
+    mainLayout->setSpacing(10);
+
+    m_tabWidget = new QTabWidget(this);
+    m_tabWidget->setStyleSheet(R"(
+        QTabWidget::pane {
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background-color: #ffffff;
+            top: -1px;
+        }
+        QTabBar::tab {
+            background-color: #f1f5f9;
+            color: #475569;
+            padding: 8px 18px;
+            font-size: 13px;
+            font-weight: 600;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            border: 1px solid #cbd5e1;
+            margin-right: 4px;
+        }
+        QTabBar::tab:selected {
+            background-color: #ffffff;
+            color: #0f172a;
+            border-bottom: 2px solid #2563eb;
+        }
+        QTabBar::tab:hover:!selected {
+            background-color: #e2e8f0;
+        }
+    )");
+
+    m_tabWidget->addTab(createLiveTab(), QStringLiteral("🛫 Live Runways & Critical Section"));
+    m_tabWidget->addTab(createConcurrentTab(), QStringLiteral("🔬 Concurrent Allocation Demonstration (C++ Threads)"));
+
+    mainLayout->addWidget(m_tabWidget);
+}
+
+QWidget* RunwaysView::createConcurrentTab()
+{
+    QWidget *tab = new QWidget(this);
+    QVBoxLayout *tabLayout = new QVBoxLayout(tab);
+    tabLayout->setContentsMargins(16, 16, 16, 16);
+    tabLayout->setSpacing(14);
+
+    // ── 1. Header Row ────────────────────────────────────────────────────────
+    QVBoxLayout *headerLayout = new QVBoxLayout;
+    QLabel *titleLabel = new QLabel(QStringLiteral("Concurrent Runway Allocation Demonstration (Day 20)"), tab);
+    titleLabel->setStyleSheet("font-size: 20px; font-weight: bold; color: #0f172a;");
+
+    QLabel *subLabel = new QLabel(QStringLiteral(
+        "Simulates multiple concurrent C++ threads (std::thread) competing for a single shared runway resource simultaneously "
+        "via a start barrier (std::condition_variable). Demonstrates in-process mutual exclusion, race condition prevention, and safe thread lifecycle management."), tab);
+    subLabel->setStyleSheet("font-size: 13px; color: #64748b;");
+    subLabel->setWordWrap(true);
+
+    headerLayout->addWidget(titleLabel);
+    headerLayout->addWidget(subLabel);
+    tabLayout->addLayout(headerLayout);
+
+    // ── 2. Controls Toolbar ──────────────────────────────────────────────────
+    QHBoxLayout *controlsLayout = new QHBoxLayout;
+    controlsLayout->setSpacing(12);
+
+    QLabel *targetLabel = new QLabel(QStringLiteral("Target Runway:"), tab);
+    targetLabel->setStyleSheet("font-size: 13px; font-weight: 600; color: #334155;");
+    controlsLayout->addWidget(targetLabel);
+
+    m_demoRunwayCombo = new QComboBox(tab);
+    m_demoRunwayCombo->setMinimumWidth(220);
+    m_demoRunwayCombo->setStyleSheet(R"(
+        QComboBox {
+            background-color: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            color: #0f172a;
+        }
+    )");
+    controlsLayout->addWidget(m_demoRunwayCombo);
+
+    QLabel *threadsLabel = new QLabel(QStringLiteral("Worker Threads:"), tab);
+    threadsLabel->setStyleSheet("font-size: 13px; font-weight: 600; color: #334155; margin-left: 8px;");
+    controlsLayout->addWidget(threadsLabel);
+
+    m_demoThreadSpin = new QSpinBox(tab);
+    m_demoThreadSpin->setRange(2, 10);
+    m_demoThreadSpin->setValue(3);
+    m_demoThreadSpin->setMinimumWidth(70);
+    m_demoThreadSpin->setStyleSheet(R"(
+        QSpinBox {
+            background-color: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 13px;
+            color: #0f172a;
+        }
+    )");
+    controlsLayout->addWidget(m_demoThreadSpin);
+
+    m_startDemoBtn = new QPushButton(QStringLiteral("▶ Start Concurrent Test"), tab);
+    m_startDemoBtn->setStyleSheet(R"(
+        QPushButton {
+            background-color: #2563eb;
+            color: #ffffff;
+            font-weight: 600;
+            padding: 8px 18px;
+            border-radius: 6px;
+            border: none;
+            font-size: 13px;
+        }
+        QPushButton:hover {
+            background-color: #1d4ed8;
+        }
+        QPushButton:disabled {
+            background-color: #93c5fd;
+            color: #ffffff;
+        }
+    )");
+    connect(m_startDemoBtn, &QPushButton::clicked, this, &RunwaysView::onStartConcurrentTestClicked);
+    controlsLayout->addWidget(m_startDemoBtn);
+
+    m_resetDemoBtn = new QPushButton(QStringLiteral("↺ Reset Demo"), tab);
+    m_resetDemoBtn->setStyleSheet(R"(
+        QPushButton {
+            background-color: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            font-weight: 600;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        QPushButton:hover {
+            background-color: #e2e8f0;
+            border-color: #94a3b8;
+        }
+    )");
+    connect(m_resetDemoBtn, &QPushButton::clicked, this, &RunwaysView::onResetDemoClicked);
+    controlsLayout->addWidget(m_resetDemoBtn);
+
+    m_refreshDemoBtn = new QPushButton(QStringLiteral("🔄 Refresh Resource State"), tab);
+    m_refreshDemoBtn->setStyleSheet(R"(
+        QPushButton {
+            background-color: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            font-weight: 600;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        QPushButton:hover {
+            background-color: #f8fafc;
+            border-color: #94a3b8;
+        }
+    )");
+    connect(m_refreshDemoBtn, &QPushButton::clicked, this, &RunwaysView::onRefreshResourceStateClicked);
+    controlsLayout->addWidget(m_refreshDemoBtn);
+
+    controlsLayout->addStretch();
+    tabLayout->addLayout(controlsLayout);
+
+    // ── 3. Status Banner ─────────────────────────────────────────────────────
+    m_demoStatusLabel = new QLabel(QStringLiteral("ℹ️ Ready to launch concurrent threads. Select a runway and click 'Start Concurrent Test'."), tab);
+    m_demoStatusLabel->setStyleSheet(R"(
+        QLabel {
+            background-color: #f8fafc;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+    )");
+    tabLayout->addWidget(m_demoStatusLabel);
+
+    // ── 4. Metrics Cards Dashboard ───────────────────────────────────────────
+    QHBoxLayout *cardsLayout = new QHBoxLayout;
+    cardsLayout->setSpacing(12);
+
+    auto makeCard = [tab](const QString &title, QLabel *&valLabel, const QString &initVal, const QString &accentColor) -> QWidget* {
+        QWidget *card = new QWidget(tab);
+        card->setStyleSheet(QStringLiteral(
+            "background-color: #ffffff; border: 1px solid #e2e8f0; border-top: 3px solid %1; border-radius: 6px; padding: 8px 12px;")
+            .arg(accentColor));
+        QVBoxLayout *cLayout = new QVBoxLayout(card);
+        cLayout->setContentsMargins(4, 4, 4, 4);
+        cLayout->setSpacing(2);
+
+        QLabel *tLabel = new QLabel(title, card);
+        tLabel->setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase;");
+
+        valLabel = new QLabel(initVal, card);
+        valLabel->setStyleSheet(QStringLiteral("font-size: 16px; font-weight: bold; color: %1;").arg(accentColor));
+
+        cLayout->addWidget(tLabel);
+        cLayout->addWidget(valLabel);
+        return card;
+    };
+
+    cardsLayout->addWidget(makeCard(QStringLiteral("Total Requests"), m_totalReqCard, QStringLiteral("0 Requests"), QStringLiteral("#3b82f6")));
+    cardsLayout->addWidget(makeCard(QStringLiteral("Successful Allocations"), m_successCard, QStringLiteral("0 Winner"), QStringLiteral("#16a34a")));
+    cardsLayout->addWidget(makeCard(QStringLiteral("Rejected Allocations"), m_rejectedCard, QStringLiteral("0 Conflicts"), QStringLiteral("#dc2626")));
+    cardsLayout->addWidget(makeCard(QStringLiteral("Final Runway Owner"), m_winnerCard, QStringLiteral("None (Available)"), QStringLiteral("#0f172a")));
+
+    tabLayout->addLayout(cardsLayout);
+
+    // ── 5. Results Table ─────────────────────────────────────────────────────
+    m_demoTable = new QTableWidget(tab);
+    m_demoTable->setColumnCount(7);
+    m_demoTable->setHorizontalHeaderLabels({
+        QStringLiteral("Thread Label"),
+        QStringLiteral("OS System Thread ID"),
+        QStringLiteral("Flight ID / Number"),
+        QStringLiteral("Requested Runway"),
+        QStringLiteral("Request Status"),
+        QStringLiteral("Allocation Result"),
+        QStringLiteral("Outcome / Contention Message")
+    });
+
+    m_demoTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_demoTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_demoTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_demoTable->verticalHeader()->setVisible(false);
+    m_demoTable->setAlternatingRowColors(true);
+    m_demoTable->setShowGrid(false);
+
+    m_demoTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Stretch);
+
+    m_demoTable->setStyleSheet(R"(
+        QTableWidget {
+            background-color: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            gridline-color: transparent;
+        }
+        QTableWidget::item {
+            padding: 8px 12px;
+            color: #1e293b;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        QTableWidget::item:selected {
+            background-color: #e0e7ff;
+            color: #1e1b4b;
+        }
+        QHeaderView::section {
+            background-color: #f8fafc;
+            color: #475569;
+            font-weight: 600;
+            font-size: 12px;
+            padding: 10px 12px;
+            border: none;
+            border-bottom: 2px solid #cbd5e1;
+        }
+    )");
+
+    tabLayout->addWidget(m_demoTable);
+
+    return tab;
+}
+
+QWidget* RunwaysView::createLiveTab()
+{
+    QWidget *tab = new QWidget(this);
+    QVBoxLayout *mainLayout = new QVBoxLayout(tab);
+    mainLayout->setContentsMargins(16, 16, 16, 16);
+    mainLayout->setSpacing(14);
 
     // ── 1. Header Row ────────────────────────────────────────────────────────
     QHBoxLayout *headerLayout = new QHBoxLayout;
@@ -399,6 +686,7 @@ void RunwaysView::setupUi()
 
     m_contentStack->addWidget(m_stateWidget);
     mainLayout->addWidget(m_contentStack);
+    return tab;
 }
 
 void RunwaysView::updatePermissions()
@@ -434,6 +722,16 @@ void RunwaysView::updatePermissions()
         m_permNotice->setText(QStringLiteral("👁 Monitor Mode"));
         m_permNotice->setStyleSheet("background-color: #f1f5f9; color: #475569; font-size: 11px; font-weight: 600; padding: 6px 12px; border-radius: 12px; border: 1px solid #e2e8f0;");
         m_permNotice->show();
+    }
+
+    bool canRunDemo = canAllocate || isAdmin;
+    if (m_startDemoBtn) {
+        m_startDemoBtn->setEnabled(canRunDemo);
+        if (!canRunDemo) {
+            m_startDemoBtn->setToolTip(QStringLiteral("Requires ATC Controller or Admin privileges."));
+        } else {
+            m_startDemoBtn->setToolTip(QStringLiteral("Launch concurrent worker threads competing for selected runway."));
+        }
     }
 
     onSelectionChanged();
@@ -478,6 +776,7 @@ void RunwaysView::refreshRunways()
     }
 
     renderRunwayTable(m_currentRunways);
+    updateDemoRunwayCombo();
     m_contentStack->setCurrentWidget(m_tableWidget);
     m_countBadge->setText(QStringLiteral("%1 Runways").arg(m_currentRunways.size()));
     m_countBadge->setStyleSheet("background-color: #e0f2fe; color: #0369a1; font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 12px; border: 1px solid #bae6fd;");
@@ -827,6 +1126,234 @@ void RunwaysView::onReleaseClicked()
             QStringLiteral("Failed to release runway %1:\n%2").arg(rw->runwayNumber, error)
         );
         return;
+    }
+
+    refreshRunways();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Concurrent Allocation Demonstration Slots & Helpers (Day 20)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void RunwaysView::updateDemoRunwayCombo()
+{
+    if (!m_demoRunwayCombo) {
+        return;
+    }
+
+    int prevSelectedId = m_demoRunwayCombo->currentData().toInt();
+    m_demoRunwayCombo->clear();
+
+    for (const auto &rw : m_currentRunways) {
+        QString text = QStringLiteral("Runway %1 (%2)").arg(rw.runwayNumber, rw.status);
+        m_demoRunwayCombo->addItem(text, rw.id);
+    }
+
+    if (prevSelectedId > 0) {
+        int idx = m_demoRunwayCombo->findData(prevSelectedId);
+        if (idx >= 0) {
+            m_demoRunwayCombo->setCurrentIndex(idx);
+        }
+    }
+}
+
+void RunwaysView::onStartConcurrentTestClicked()
+{
+    if (!m_demoEngine) {
+        return;
+    }
+
+    if (!m_demoRunwayCombo || m_demoRunwayCombo->count() == 0) {
+        QMessageBox::warning(this, QStringLiteral("Concurrent Test"), QStringLiteral("No runway available. Please ensure runways exist and are loaded."));
+        return;
+    }
+
+    int runwayId = m_demoRunwayCombo->currentData().toInt();
+    if (runwayId <= 0) {
+        QMessageBox::warning(this, QStringLiteral("Concurrent Test"), QStringLiteral("Invalid runway selected."));
+        return;
+    }
+
+    int threadCount = m_demoThreadSpin ? m_demoThreadSpin->value() : 3;
+
+    if (m_startDemoBtn) {
+        m_startDemoBtn->setEnabled(false);
+    }
+
+    m_demoEngine->startAsyncDefault(runwayId, threadCount);
+}
+
+void RunwaysView::onResetDemoClicked()
+{
+    if (m_demoEngine) {
+        m_demoEngine->cancelAndJoin();
+    }
+
+    if (m_demoTable) {
+        m_demoTable->setRowCount(0);
+    }
+
+    if (m_totalReqCard) m_totalReqCard->setText(QStringLiteral("0 Requests"));
+    if (m_successCard) m_successCard->setText(QStringLiteral("0 Winner"));
+    if (m_rejectedCard) m_rejectedCard->setText(QStringLiteral("0 Conflicts"));
+    if (m_winnerCard) m_winnerCard->setText(QStringLiteral("None (Available)"));
+
+    if (m_demoStatusLabel) {
+        m_demoStatusLabel->setText(QStringLiteral("ℹ️ Concurrency demonstration reset. Ready to launch test."));
+        m_demoStatusLabel->setStyleSheet(R"(
+            QLabel {
+                background-color: #f8fafc;
+                color: #334155;
+                border: 1px solid #e2e8f0;
+                border-radius: 6px;
+                padding: 10px 14px;
+                font-size: 13px;
+                font-weight: 500;
+            }
+        )");
+    }
+
+    updatePermissions();
+}
+
+void RunwaysView::onRefreshResourceStateClicked()
+{
+    refreshRunways();
+    if (m_demoStatusLabel) {
+        m_demoStatusLabel->setText(QStringLiteral("🔄 Shared resource states synchronized with MySQL and in-memory ResourceManager."));
+    }
+}
+
+void RunwaysView::onDemoStarted(int runwayId, int totalThreads)
+{
+    if (m_demoStatusLabel) {
+        m_demoStatusLabel->setText(QStringLiteral("🚀 [Runway %1] %2 worker threads spawned and waiting at start barrier condition variable...")
+            .arg(runwayId).arg(totalThreads));
+        m_demoStatusLabel->setStyleSheet(R"(
+            QLabel {
+                background-color: #fefce8;
+                color: #854d0e;
+                border: 1px solid #fef08a;
+                border-radius: 6px;
+                padding: 10px 14px;
+                font-size: 13px;
+                font-weight: 500;
+            }
+        )");
+    }
+
+    if (m_demoTable) {
+        m_demoTable->setRowCount(totalThreads);
+        auto reqs = ConcurrentAllocationDemo::createDefaultRequests(runwayId, totalThreads);
+
+        for (int i = 0; i < totalThreads; ++i) {
+            auto itemLabel = new QTableWidgetItem(reqs[i].threadLabel);
+            auto itemSysId = new QTableWidgetItem(QStringLiteral("Spawning..."));
+            auto itemFlight = new QTableWidgetItem(QStringLiteral("%1 (#%2)").arg(reqs[i].flightNumber).arg(reqs[i].flightId));
+            auto itemRw = new QTableWidgetItem(QStringLiteral("Runway %1").arg(runwayId));
+            auto itemStatus = new QTableWidgetItem(QStringLiteral("Waiting to Start"));
+            auto itemResult = new QTableWidgetItem(QStringLiteral("PENDING"));
+            auto itemMsg = new QTableWidgetItem(QStringLiteral("Waiting at std::condition_variable start barrier..."));
+
+            itemLabel->setTextAlignment(Qt::AlignCenter);
+            itemSysId->setTextAlignment(Qt::AlignCenter);
+            itemFlight->setTextAlignment(Qt::AlignCenter);
+            itemRw->setTextAlignment(Qt::AlignCenter);
+            itemStatus->setTextAlignment(Qt::AlignCenter);
+            itemResult->setTextAlignment(Qt::AlignCenter);
+
+            itemStatus->setForeground(QColor(100, 116, 139));
+            itemResult->setForeground(QColor(100, 116, 139));
+
+            m_demoTable->setItem(i, 0, itemLabel);
+            m_demoTable->setItem(i, 1, itemSysId);
+            m_demoTable->setItem(i, 2, itemFlight);
+            m_demoTable->setItem(i, 3, itemRw);
+            m_demoTable->setItem(i, 4, itemStatus);
+            m_demoTable->setItem(i, 5, itemResult);
+            m_demoTable->setItem(i, 6, itemMsg);
+        }
+    }
+}
+
+void RunwaysView::onThreadStateChanged(const ConcurrentAllocationDemo::ThreadResult &result)
+{
+    if (!m_demoTable) {
+        return;
+    }
+
+    int row = result.requestId - 1;
+    if (row < 0 || row >= m_demoTable->rowCount()) {
+        return;
+    }
+
+    if (m_demoTable->item(row, 1)) {
+        m_demoTable->item(row, 1)->setText(result.systemThreadId);
+    }
+    if (m_demoTable->item(row, 4)) {
+        m_demoTable->item(row, 4)->setText(result.status);
+    }
+    if (m_demoTable->item(row, 5)) {
+        if (result.success) {
+            m_demoTable->item(row, 5)->setText(QStringLiteral("SUCCESS"));
+            m_demoTable->item(row, 5)->setForeground(QColor(22, 163, 74)); // Green
+        } else if (result.status == QStringLiteral("Allocation Rejected") || result.status == QStringLiteral("Thread Failed")) {
+            m_demoTable->item(row, 5)->setText(QStringLiteral("CONFLICT"));
+            m_demoTable->item(row, 5)->setForeground(QColor(220, 38, 38)); // Red
+        } else {
+            m_demoTable->item(row, 5)->setText(QStringLiteral("IN PROGRESS"));
+            m_demoTable->item(row, 5)->setForeground(QColor(217, 119, 6)); // Amber
+        }
+    }
+    if (m_demoTable->item(row, 6)) {
+        m_demoTable->item(row, 6)->setText(result.message);
+    }
+}
+
+void RunwaysView::onDemoFinished(const ConcurrentAllocationDemo::DemoReport &report)
+{
+    updatePermissions();
+
+    if (m_totalReqCard) {
+        m_totalReqCard->setText(QStringLiteral("%1 Requests").arg(report.totalRequests));
+    }
+    if (m_successCard) {
+        m_successCard->setText(QStringLiteral("%1 Winner").arg(report.successfulAllocations));
+    }
+    if (m_rejectedCard) {
+        m_rejectedCard->setText(QStringLiteral("%1 Conflicts").arg(report.rejectedAllocations));
+    }
+    if (m_winnerCard) {
+        m_winnerCard->setText(report.finalOwningFlightNumber);
+    }
+
+    if (m_demoStatusLabel) {
+        m_demoStatusLabel->setText(report.summaryMessage);
+        if (!report.hasDataRace && report.successfulAllocations <= 1) {
+            m_demoStatusLabel->setStyleSheet(R"(
+                QLabel {
+                    background-color: #f0fdf4;
+                    color: #166534;
+                    border: 1px solid #bbf7d0;
+                    border-radius: 6px;
+                    padding: 10px 14px;
+                    font-size: 13px;
+                    font-weight: 600;
+                }
+            )");
+        } else {
+            m_demoStatusLabel->setStyleSheet(R"(
+                QLabel {
+                    background-color: #fef2f2;
+                    color: #991b1b;
+                    border: 1px solid #fecaca;
+                    border-radius: 6px;
+                    padding: 10px 14px;
+                    font-size: 13px;
+                    font-weight: 600;
+                }
+            )");
+        }
     }
 
     refreshRunways();
