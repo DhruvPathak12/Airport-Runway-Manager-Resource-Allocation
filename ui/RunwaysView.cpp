@@ -1,6 +1,7 @@
 #include "RunwaysView.h"
 
 #include "services/ApplicationService.h"
+#include "resource/ResourceManager.h"
 #include "ui/RunwayDialog.h"
 #include "ui/RunwayAllocationDialog.h"
 
@@ -17,6 +18,53 @@ RunwaysView::RunwaysView(ApplicationService *service, QWidget *parent)
 
     if (m_service) {
         connect(m_service, &ApplicationService::runwaysChanged, this, &RunwaysView::refreshRunways);
+
+        if (m_service->resourceManager()) {
+            connect(m_service->resourceManager(), &ResourceManager::criticalSectionEntered,
+                    this, [this](int runwayId, int flightId) {
+                        if (m_csBanner) {
+                            m_csBanner->setText(QStringLiteral("🔒 [Runway %1] Mutex Acquired | Critical Section Entered%2")
+                                .arg(runwayId)
+                                .arg(flightId > 0 ? QStringLiteral(" for Flight #%1").arg(flightId) : QString()));
+                            m_csBanner->setStyleSheet(QStringLiteral(
+                                "background-color: #fefce8; color: #854d0e; border: 1px solid #fef08a; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500;"));
+                        }
+                    });
+
+            connect(m_service->resourceManager(), &ResourceManager::runwayReserved,
+                    this, [this](int runwayId, int flightId) {
+                        if (m_csBanner) {
+                            m_csBanner->setText(QStringLiteral("✅ [Runway %1] Resource Reserved for Flight #%2 | Mutual Exclusion Enforced")
+                                .arg(runwayId).arg(flightId));
+                            m_csBanner->setStyleSheet(QStringLiteral(
+                                "background-color: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500;"));
+                        }
+                        refreshRunways();
+                    });
+
+            connect(m_service->resourceManager(), &ResourceManager::runwayReleased,
+                    this, [this](int runwayId) {
+                        if (m_csBanner) {
+                            m_csBanner->setText(QStringLiteral("🔓 [Runway %1] Critical Section Released | Resource Returned to Available")
+                                .arg(runwayId));
+                            m_csBanner->setStyleSheet(QStringLiteral(
+                                "background-color: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500;"));
+                        }
+                        refreshRunways();
+                    });
+
+            connect(m_service->resourceManager(), &ResourceManager::allocationContentionRejected,
+                    this, [this](int runwayId, int flightId, const QString &reason) {
+                        Q_UNUSED(flightId)
+                        if (m_csBanner) {
+                            m_csBanner->setText(QStringLiteral("⚠️ [Runway %1] Contention Conflict: %2")
+                                .arg(runwayId).arg(reason));
+                            m_csBanner->setStyleSheet(QStringLiteral(
+                                "background-color: #fef2f2; color: #991b1b; border: 1px solid #fecaca; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500;"));
+                        }
+                        refreshRunways();
+                    });
+        }
     }
 }
 
@@ -54,6 +102,21 @@ void RunwaysView::setupUi()
     headerLayout->addWidget(m_permNotice);
 
     mainLayout->addLayout(headerLayout);
+
+    // ── 1b. OS Mutual Exclusion & Critical Section Activity Banner ───────────
+    m_csBanner = new QLabel(QStringLiteral("🔒 Mutual Exclusion: Active | Shared runway resources protected by RAII mutex"), this);
+    m_csBanner->setStyleSheet(R"(
+        QLabel {
+            background-color: #f0fdf4;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+            border-radius: 6px;
+            padding: 8px 14px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+    )");
+    mainLayout->addWidget(m_csBanner);
 
     // ── 2. Toolbar Row ───────────────────────────────────────────────────────
     QHBoxLayout *toolbarLayout = new QHBoxLayout;
@@ -251,13 +314,14 @@ void RunwaysView::setupUi()
 
     // Table view
     m_tableWidget = new QTableWidget(this);
-    m_tableWidget->setColumnCount(5);
+    m_tableWidget->setColumnCount(6);
     m_tableWidget->setHorizontalHeaderLabels({
         QStringLiteral("ID"),
         QStringLiteral("Runway Designation"),
         QStringLiteral("Permitted Operations"),
         QStringLiteral("Operational Status"),
-        QStringLiteral("Current Allocation / Occupancy")
+        QStringLiteral("Current Allocation / Occupancy"),
+        QStringLiteral("OS Critical Section State")
     });
 
     m_tableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -271,7 +335,8 @@ void RunwaysView::setupUi()
     m_tableWidget->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     m_tableWidget->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     m_tableWidget->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
 
     m_tableWidget->setStyleSheet(R"(
         QTableWidget {
@@ -493,11 +558,36 @@ void RunwaysView::renderRunwayTable(const QList<Models::Runway> &runwayList)
             allocItem->setForeground(QColor(71, 85, 105));
         }
 
+        // 5: OS Critical Section / Mutual Exclusion State
+        QString csState = QStringLiteral("Resource Available");
+        if (m_service && m_service->resourceManager()) {
+            csState = m_service->resourceManager()->criticalSectionStatus(rw.id);
+        } else if (rw.isOccupied()) {
+            csState = QStringLiteral("Resource Reserved");
+        } else if (rw.isMaintenance()) {
+            csState = QStringLiteral("Resource Busy");
+        }
+
+        QTableWidgetItem *csItem = new QTableWidgetItem(csState);
+        csItem->setTextAlignment(Qt::AlignCenter);
+        if (csState == QStringLiteral("Resource Reserved")) {
+            csItem->setForeground(QColor(37, 99, 235)); // Blue
+        } else if (csState == QStringLiteral("Critical Section Entered")) {
+            csItem->setForeground(QColor(217, 119, 6)); // Amber
+        } else if (csState == QStringLiteral("Allocation Rejected") || csState == QStringLiteral("Resource Busy")) {
+            csItem->setForeground(QColor(220, 38, 38)); // Red
+        } else if (csState == QStringLiteral("Critical Section Released")) {
+            csItem->setForeground(QColor(13, 148, 136)); // Teal
+        } else {
+            csItem->setForeground(QColor(22, 163, 74)); // Green (Available)
+        }
+
         m_tableWidget->setItem(row, 0, idItem);
         m_tableWidget->setItem(row, 1, numItem);
         m_tableWidget->setItem(row, 2, typeItem);
         m_tableWidget->setItem(row, 3, statusItem);
         m_tableWidget->setItem(row, 4, allocItem);
+        m_tableWidget->setItem(row, 5, csItem);
     }
 }
 

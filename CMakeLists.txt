@@ -634,3 +634,49 @@ target_include_directories(TestStarvationSimulation
 )
 
 add_test(NAME TestStarvationSimulation COMMAND TestStarvationSimulation)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Day 19: Critical Section & Mutual Exclusion Test Suite
+# ─────────────────────────────────────────────────────────────────────────────
+add_executable(TestCriticalSectionAndMutualExclusion
+    tests/TestCriticalSectionAndMutualExclusion.cpp
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cpp
+    src/models/Session.h
+    src/models/Session.cpp
+    src/models/Flight.h
+    src/models/Aircraft.h
+    src/models/Runway.h
+    src/models/RunwayAssignment.h
+    src/models/Process.h
+    src/models/Process.cpp
+    src/services/ApplicationService.h
+    src/services/ApplicationService.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/scheduler/Scheduler.h
+    src/scheduler/Scheduler.cpp
+    src/scheduler/ReadyQueue.h
+    src/scheduler/ReadyQueue.cpp
+    src/scheduler/AgingEngine.h
+    src/scheduler/AgingEngine.cpp
+    src/scheduler/StarvationSimulation.h
+    src/scheduler/StarvationSimulation.cpp
+    src/resource/ResourceManager.h
+    src/resource/ResourceManager.cpp
+)
+
+target_link_libraries(TestCriticalSectionAndMutualExclusion
+    PRIVATE
+    Qt6::Core
+    Qt6::Sql
+    Qt6::Test
+)
+
+target_include_directories(TestCriticalSectionAndMutualExclusion
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}
+)
+
+add_test(NAME TestCriticalSectionAndMutualExclusion COMMAND TestCriticalSectionAndMutualExclusion)

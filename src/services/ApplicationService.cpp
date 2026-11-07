@@ -40,7 +40,9 @@ bool ApplicationService::initialize()
     bool configLoaded = DatabaseManager::instance().loadConfig();
     if (configLoaded) {
         qInfo() << "[ApplicationService] Database configuration loaded. Checking connection...";
-        checkDatabaseConnection();
+        if (checkDatabaseConnection() && m_resourceManager) {
+            m_resourceManager->syncFromDatabase();
+        }
     } else {
         qInfo() << "[ApplicationService] Starting in offline/unconnected mode (db.conf not configured yet).";
     }
@@ -256,6 +258,47 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
         return Models::AllocationResult::DatabaseError;
     }
 
+    // ── Critical Section & Mutual Exclusion (Day 19) ────────────────────────
+    // Acquire RAII mutex lock protecting shared runway state against concurrent operations
+    std::unique_ptr<ResourceManager::ScopedResourceLock> csLock;
+    if (m_resourceManager) {
+        csLock = std::make_unique<ResourceManager::ScopedResourceLock>(
+            m_resourceManager->resourceMutex(), runwayId, m_resourceManager);
+
+        // Pre-check in-memory reservation status under lock
+        if (m_resourceManager->isRunwayReservedUnlocked(runwayId)) {
+            if (outError) {
+                *outError = QStringLiteral("Resource Contention: Runway %1 already has an active allocation in progress.")
+                                .arg(runwayId);
+            }
+            m_resourceManager->setCriticalSectionStatusUnlocked(runwayId, QStringLiteral("Resource Busy"));
+            emit m_resourceManager->allocationContentionRejected(runwayId, flightId, *outError);
+            emit m_resourceManager->criticalSectionExited(runwayId, QStringLiteral("Allocation Rejected"));
+            return Models::AllocationResult::ConflictExistingAssignment;
+        }
+
+        if (m_resourceManager->isRunwayInMaintenanceUnlocked(runwayId)) {
+            if (outError) {
+                *outError = QStringLiteral("Runway %1 is currently in Maintenance and cannot be allocated.")
+                                .arg(runwayId);
+            }
+            m_resourceManager->setCriticalSectionStatusUnlocked(runwayId, QStringLiteral("Allocation Rejected"));
+            emit m_resourceManager->criticalSectionExited(runwayId, QStringLiteral("Allocation Rejected"));
+            return Models::AllocationResult::RunwayUnavailable;
+        }
+
+        int activeHeldRunway = m_resourceManager->activeRunwayForFlightUnlocked(flightId);
+        if (activeHeldRunway > 0) {
+            if (outError) {
+                *outError = QStringLiteral("Flight %1 already holds an active allocation on runway %2.")
+                                .arg(flightId).arg(activeHeldRunway);
+            }
+            m_resourceManager->setCriticalSectionStatusUnlocked(runwayId, QStringLiteral("Allocation Rejected"));
+            emit m_resourceManager->criticalSectionExited(runwayId, QStringLiteral("Allocation Rejected"));
+            return Models::AllocationResult::ConflictExistingAssignment;
+        }
+    }
+
     // ── 1. Verify Runway existence, type, and availability ───────────────────
     QString runwayNumber;
     QString runwayType;
@@ -458,6 +501,9 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
             *outError = QStringLiteral("Failed to insert runway assignment record: %1")
                             .arg(insertQuery.lastError().text());
         }
+        if (m_resourceManager) {
+            m_resourceManager->rollbackAllocationUnlocked(runwayId, flightId);
+        }
         return Models::AllocationResult::DatabaseError;
     }
 
@@ -470,6 +516,9 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
         if (outError) {
             *outError = QStringLiteral("Failed to update runway occupancy status: %1")
                             .arg(updateRwQuery.lastError().text());
+        }
+        if (m_resourceManager) {
+            m_resourceManager->rollbackAllocationUnlocked(runwayId, flightId);
         }
         return Models::AllocationResult::DatabaseError;
     }
@@ -504,7 +553,7 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId, int fl
 
     // ── 7. Notify UI and Subsystems ─────────────────────────────────────────
     if (m_resourceManager) {
-        emit m_resourceManager->runwayStatusChanged(runwayId, QStringLiteral("Occupied"));
+        m_resourceManager->confirmAllocationUnlocked(runwayId, flightId);
     }
 
     emit runwaysChanged();
@@ -562,6 +611,13 @@ bool ApplicationService::releaseRunwayResource(int runwayId, QString *outError)
             *outError = QStringLiteral("Database is not currently open.");
         }
         return false;
+    }
+
+    // ── Critical Section & Mutual Exclusion (Day 19) ────────────────────────
+    std::unique_ptr<ResourceManager::ScopedResourceLock> csLock;
+    if (m_resourceManager) {
+        csLock = std::make_unique<ResourceManager::ScopedResourceLock>(
+            m_resourceManager->resourceMutex(), runwayId, m_resourceManager);
     }
 
     // Verify runway exists
@@ -669,7 +725,7 @@ bool ApplicationService::releaseRunwayResource(int runwayId, QString *outError)
     }
 
     if (m_resourceManager) {
-        emit m_resourceManager->runwayStatusChanged(runwayId, QStringLiteral("Available"));
+        m_resourceManager->releaseRunwayUnlocked(runwayId);
     }
 
     emit runwaysChanged();
@@ -972,6 +1028,10 @@ bool ApplicationService::setRunwayMaintenanceStatus(int runwayId, bool inMainten
                 return false;
             }
         }
+    }
+
+    if (m_resourceManager) {
+        m_resourceManager->setRunwayMaintenance(runwayId, inMaintenance);
     }
 
     emit runwaysChanged();
@@ -1312,6 +1372,10 @@ bool ApplicationService::updateRunwayStatus(int runwayId, const QString &newStat
         }
     }
 
+    if (m_resourceManager) {
+        m_resourceManager->setRunwayMaintenance(runwayId, newStatus.compare(QStringLiteral("Maintenance"), Qt::CaseInsensitive) == 0);
+    }
+
     emit runwaysChanged();
     return true;
 }
@@ -1380,6 +1444,13 @@ bool ApplicationService::createRunway(const Models::Runway &runway, QString *out
                             .arg(query.lastError().databaseText().isEmpty() ? query.lastError().text() : query.lastError().databaseText());
         }
         return false;
+    }
+
+    if (m_resourceManager) {
+        int newId = query.lastInsertId().toInt();
+        if (newId > 0 && rw.isMaintenance()) {
+            m_resourceManager->setRunwayMaintenance(newId, true);
+        }
     }
 
     emit runwaysChanged();
@@ -1480,6 +1551,10 @@ bool ApplicationService::updateRunway(const Models::Runway &runway, QString *out
                             .arg(query.lastError().databaseText().isEmpty() ? query.lastError().text() : query.lastError().databaseText());
         }
         return false;
+    }
+
+    if (m_resourceManager) {
+        m_resourceManager->setRunwayMaintenance(rw.id, rw.isMaintenance());
     }
 
     emit runwaysChanged();

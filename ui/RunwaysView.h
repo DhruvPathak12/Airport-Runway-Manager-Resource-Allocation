@@ -63,6 +63,7 @@ private:
     QPushButton    *m_editButton           = nullptr;
     QLabel         *m_countBadge           = nullptr;
     QLabel         *m_permNotice           = nullptr;
+    QLabel         *m_csBanner             = nullptr;
 
     // Content stack (0=Table, 1=Empty / Error)
     QStackedWidget *m_contentStack         = nullptr;
