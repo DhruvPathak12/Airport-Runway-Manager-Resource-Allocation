@@ -43,8 +43,11 @@ bool ApplicationService::initialize() {
   if (configLoaded) {
     qInfo() << "[ApplicationService] Database configuration loaded. Checking "
                "connection...";
-    if (checkDatabaseConnection() && m_resourceManager) {
-      m_resourceManager->syncFromDatabase();
+    if (checkDatabaseConnection()) {
+      if (m_resourceManager) {
+        m_resourceManager->syncFromDatabase();
+      }
+      syncReadyQueueFromDatabase();
     }
   } else {
     qInfo() << "[ApplicationService] Starting in offline/unconnected mode "
@@ -5102,4 +5105,199 @@ bool ApplicationService::reconcileTransactionState(int runwayId, int flightId,
     }
     return false;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Day 23: Complete OS & DBMS Integration Workflows
+// ─────────────────────────────────────────────────────────────────────────────
+
+int ApplicationService::findCompatibleAvailableRunway(int flightId, QString *outError) {
+  if (flightId <= 0) {
+    if (outError) *outError = QStringLiteral("Invalid flight ID.");
+    return 0;
+  }
+
+  Models::Flight flight;
+  if (!getFlightById(flightId, flight, outError)) {
+    return 0;
+  }
+
+  QList<Models::Runway> avail = getAvailableRunwaysForAllocation(outError);
+  if (avail.isEmpty()) {
+    if (outError && outError->isEmpty()) {
+      *outError = QStringLiteral("No runways are currently Available in the database.");
+    }
+    return 0;
+  }
+
+  for (const Models::Runway &rw : avail) {
+    if (m_resourceManager) {
+      if (m_resourceManager->isRunwayReserved(rw.id) ||
+          m_resourceManager->isRunwayInMaintenance(rw.id)) {
+        continue;
+      }
+    }
+
+    bool isArrival = (flight.flightType.compare(QStringLiteral("Arrival"), Qt::CaseInsensitive) == 0);
+    bool isDeparture = (flight.flightType.compare(QStringLiteral("Departure"), Qt::CaseInsensitive) == 0);
+
+    bool typeMatches = false;
+    if (rw.runwayType.compare(QStringLiteral("Both"), Qt::CaseInsensitive) == 0) {
+      typeMatches = true;
+    } else if (isArrival && rw.runwayType.compare(QStringLiteral("Landing"), Qt::CaseInsensitive) == 0) {
+      typeMatches = true;
+    } else if (isDeparture && rw.runwayType.compare(QStringLiteral("Takeoff"), Qt::CaseInsensitive) == 0) {
+      typeMatches = true;
+    }
+
+    if (typeMatches) {
+      return rw.id;
+    }
+  }
+
+  if (outError) {
+    *outError = QStringLiteral("No compatible available runway found for flight type '%1'.").arg(flight.flightType);
+  }
+  return 0;
+}
+
+bool ApplicationService::synchronizeFlightProcess(int flightId, int serviceTimeSeconds, QString *outError) {
+  if (!isAuthenticated()) {
+    if (outError) *outError = QStringLiteral("Authentication required.");
+    return false;
+  }
+
+  if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+    if (outError) {
+      *outError = QStringLiteral("Access denied: role '%1' is not authorized to manage scheduling.")
+                      .arg(m_session.role());
+    }
+    return false;
+  }
+
+  if (flightId <= 0) {
+    if (outError) *outError = QStringLiteral("Invalid flight ID.");
+    return false;
+  }
+
+  if (hasProcessForFlight(flightId)) {
+    Models::Flight flight;
+    if (getFlightById(flightId, flight, outError)) {
+      if (m_scheduler) {
+        Models::Process *qp = m_scheduler->readyQueue().findByFlightId(flightId);
+        if (qp) {
+          qp->basePriority = flight.priority;
+          qp->setEmergency(flight.isEmergency);
+        }
+      }
+    }
+    return true;
+  }
+
+  return createProcessForFlight(flightId, serviceTimeSeconds, nullptr, outError);
+}
+
+ApplicationService::ScheduleAndAllocateResult ApplicationService::scheduleAndAllocateNext(QString *outError) {
+  ScheduleAndAllocateResult result;
+
+  if (!isAuthenticated()) {
+    result.message = QStringLiteral("Authentication required: unauthenticated users cannot schedule or allocate runways.");
+    if (outError) *outError = result.message;
+    return result;
+  }
+
+  bool canSchedule = m_session.hasPermission(QStringLiteral("action:ManageScheduling")) || m_session.isAdmin();
+  bool canAllocate = m_session.hasPermission(QStringLiteral("action:RunwayAllocation")) || m_session.isAdmin();
+
+  if (!canSchedule || !canAllocate) {
+    result.message = QStringLiteral("Access denied: role '%1' lacks required permissions (ManageScheduling and RunwayAllocation).")
+                         .arg(m_session.role());
+    if (outError) *outError = result.message;
+    return result;
+  }
+
+  if (!m_scheduler) {
+    result.message = QStringLiteral("Scheduler service is not initialized.");
+    if (outError) *outError = result.message;
+    return result;
+  }
+
+  // 1. Select highest-priority eligible candidate from ReadyQueue
+  Models::Process candidate;
+  QString selectReason;
+  if (!m_scheduler->selectNextProcess(&candidate, &selectReason)) {
+    result.message = selectReason.isEmpty() ? QStringLiteral("No eligible READY processes waiting in queue.") : selectReason;
+    if (outError) *outError = result.message;
+    return result;
+  }
+  result.candidateProcess = candidate;
+
+  // 2. Fetch and validate flight
+  Models::Flight flight;
+  QString fetchErr;
+  if (!getFlightById(candidate.flightId, flight, &fetchErr)) {
+    result.message = QStringLiteral("Failed to fetch flight %1: %2").arg(candidate.flightId).arg(fetchErr);
+    if (outError) *outError = result.message;
+    return result;
+  }
+
+  // Check if flight already possesses an active assignment
+  Models::RunwayAssignment existingAssign;
+  if (getActiveAssignmentForFlight(flight.id, existingAssign)) {
+    result.message = QStringLiteral("Flight %1 already possesses active runway assignment #%2.")
+                         .arg(flight.flightNumber)
+                         .arg(existingAssign.assignmentId);
+    result.allocationResult = Models::AllocationResult::ConflictExistingAssignment;
+    if (outError) *outError = result.message;
+    return result;
+  }
+
+  // 3. Find compatible available runway
+  QString findErr;
+  int rwId = findCompatibleAvailableRunway(flight.id, &findErr);
+  if (rwId <= 0) {
+    // RESOURCE UNAVAILABLE: Do NOT dispatch candidate. Preserve READY state.
+    result.success = false;
+    result.allocationResult = Models::AllocationResult::RunwayUnavailable;
+    result.message = QStringLiteral("No compatible available runway for flight %1 (%2 - %3). Process remains READY in queue.")
+                         .arg(flight.flightNumber.isEmpty() ? QString::number(flight.id) : flight.flightNumber)
+                         .arg(flight.airline)
+                         .arg(flight.flightType);
+    if (outError) *outError = result.message;
+    return result;
+  }
+
+  Models::Runway targetRunway;
+  getRunwayById(rwId, targetRunway);
+
+  // 4. Dispatch the candidate process (READY -> RUNNING)
+  Models::Process dispatched;
+  QString dispErr;
+  if (!dispatchNextProcess(&dispatched, &dispErr)) {
+    result.success = false;
+    result.message = QStringLiteral("Scheduler dispatch rejected: %1").arg(dispErr);
+    if (outError) *outError = result.message;
+    return result;
+  }
+  result.dispatchedProcess = dispatched;
+
+  // 5. Execute atomic MySQL runway allocation transaction
+  QString allocErr;
+  Models::AllocationResult allocRes = allocateRunway(rwId, flight.id, &allocErr);
+  result.allocationResult = allocRes;
+
+  if (allocRes != Models::AllocationResult::Success) {
+    result.success = false;
+    result.message = QStringLiteral("Runway allocation transaction failed: %1").arg(allocErr);
+    if (outError) *outError = result.message;
+    return result;
+  }
+
+  result.success = true;
+  result.allocatedRunway = targetRunway;
+  result.message = QStringLiteral("Successfully scheduled and allocated runway %1 to flight %2 (Priority: %3, Assignment committed).")
+                       .arg(targetRunway.runwayNumber)
+                       .arg(flight.flightNumber)
+                       .arg(dispatched.effectivePriority);
+  return result;
 }

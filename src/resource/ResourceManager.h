@@ -134,6 +134,13 @@ public:
     bool isRunwayInMaintenance(int runwayId) const;
 
     /**
+     * @brief Checks if a runway is currently available (neither reserved nor in maintenance).
+     */
+    bool isRunwayAvailable(int runwayId) const {
+        return !isRunwayReserved(runwayId) && !isRunwayInMaintenance(runwayId);
+    }
+
+    /**
      * @brief Returns the current critical section lifecycle status for a runway.
      */
     QString criticalSectionStatus(int runwayId) const;

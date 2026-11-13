@@ -44,6 +44,7 @@ private slots:
     void onIntervalChanged(int seconds);
     void onEvaluateAgingClicked();
     void onDispatchClicked();
+    void onScheduleAndAllocateClicked();
     void onClockTick();
 
     // Demonstration Tab slots (Day 18)
@@ -74,6 +75,7 @@ private:
     QPushButton    *m_stopAgingButton     = nullptr;
     QPushButton    *m_evalAgingButton     = nullptr;
     QPushButton    *m_dispatchButton      = nullptr;
+    QPushButton    *m_scheduleAllocateButton = nullptr;
     QPushButton    *m_refreshButton       = nullptr;
     QLabel         *m_runningBanner       = nullptr;
     QLabel         *m_permNotice          = nullptr;

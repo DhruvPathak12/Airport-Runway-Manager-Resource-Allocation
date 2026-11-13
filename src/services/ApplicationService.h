@@ -577,6 +577,57 @@ public:
         int horizonSeconds = 180,
         QString *outError = nullptr);
 
+    // ── Day 23: Complete OS & DBMS Integration Workflow ───────────────────────
+    struct ScheduleAndAllocateResult {
+        bool success = false;
+        Models::Process candidateProcess;
+        Models::Process dispatchedProcess;
+        Models::Runway allocatedRunway;
+        Models::AllocationResult allocationResult = Models::AllocationResult::DatabaseError;
+        QString message;
+    };
+
+    /**
+     * @brief Finds a compatible available runway for a given flight ID.
+     * Evaluates runway availability in database and ResourceManager, and verifies
+     * operation type compatibility (Landing/Arrival, Takeoff/Departure, Both/Any).
+     *
+     * @param flightId Target flight ID.
+     * @param outError Optional error string.
+     * @return runway_id of compatible runway if found; 0 if none available.
+     */
+    int findCompatibleAvailableRunway(int flightId, QString *outError = nullptr);
+
+    /**
+     * @brief Synchronizes or creates a corresponding scheduling process for an eligible flight.
+     * If already exists: synchronizes priority/emergency status.
+     * If does not exist: creates a new process in scheduling_queue and ready queue.
+     *
+     * @param flightId Target flight ID.
+     * @param serviceTimeSeconds Burst time in seconds (default 60s).
+     * @param outError Optional error string.
+     * @return true if process is synchronized and ready.
+     */
+    bool synchronizeFlightProcess(int flightId, int serviceTimeSeconds = 60, QString *outError = nullptr);
+
+    /**
+     * @brief End-to-end integration workflow connecting OS Priority Scheduling with
+     * DBMS Runway Resource Allocation.
+     *
+     * Workflow:
+     *   1. Selects highest-priority eligible flight from ready queue via Scheduler.
+     *   2. Validates flight status and checks for existing assignments.
+     *   3. Identifies a compatible available runway via findCompatibleAvailableRunway().
+     *   4. If no runway available: preserves READY state and returns resource unavailable.
+     *   5. If compatible runway available: dispatches process (RUNNING) and executes
+     *      atomic MySQL allocation transaction (with row locks and in-memory sync).
+     *   6. Returns detailed ScheduleAndAllocateResult with full audit trail.
+     *
+     * @param outError Optional error string.
+     * @return ScheduleAndAllocateResult describing scheduling decision and allocation outcome.
+     */
+    ScheduleAndAllocateResult scheduleAndAllocateNext(QString *outError = nullptr);
+
 signals:
     /**
      * @brief Emitted when priority aging is evaluated.

@@ -210,6 +210,23 @@ QWidget* SchedulingView::createLiveTab()
     connect(m_dispatchButton, &QPushButton::clicked, this, &SchedulingView::onDispatchClicked);
     toolbarLayout->addWidget(m_dispatchButton);
 
+    m_scheduleAllocateButton = new QPushButton(QStringLiteral("🛫 Schedule & Allocate Runway"), tab);
+    m_scheduleAllocateButton->setStyleSheet(R"(
+        QPushButton {
+            background-color: #059669;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        QPushButton:hover { background-color: #047857; }
+        QPushButton:disabled { background-color: #94a3b8; color: #f1f5f9; }
+    )");
+    connect(m_scheduleAllocateButton, &QPushButton::clicked, this, &SchedulingView::onScheduleAndAllocateClicked);
+    toolbarLayout->addWidget(m_scheduleAllocateButton);
+
     toolbarLayout->addStretch();
 
     m_refreshButton = new QPushButton(QStringLiteral("🔄 Refresh"), tab);
@@ -649,6 +666,11 @@ void SchedulingView::updatePermissions()
     m_intervalSpin->setEnabled(canManage);
     m_evalAgingButton->setEnabled(canManage);
     m_dispatchButton->setEnabled(canManage);
+    if (m_scheduleAllocateButton) {
+        bool canAllocate = m_service->currentSession().hasPermission(QStringLiteral("action:RunwayAllocation")) ||
+                           m_service->currentSession().isAdmin();
+        m_scheduleAllocateButton->setEnabled(canManage && canAllocate);
+    }
 
     // Starvation Tab controls
     m_btnRunWithoutAging->setEnabled(canManage);
@@ -924,6 +946,27 @@ void SchedulingView::onDispatchClicked()
     } else {
         refreshView();
     }
+}
+
+void SchedulingView::onScheduleAndAllocateClicked()
+{
+    if (!m_service) return;
+    QString err;
+    ApplicationService::ScheduleAndAllocateResult res = m_service->scheduleAndAllocateNext(&err);
+    if (res.success) {
+        QMessageBox::information(
+            this,
+            QStringLiteral("Schedule & Runway Allocation"),
+            res.message
+        );
+    } else {
+        QMessageBox::warning(
+            this,
+            QStringLiteral("Schedule & Allocation Result"),
+            res.message.isEmpty() ? err : res.message
+        );
+    }
+    refreshView();
 }
 
 // ── Starvation Demonstration Implementation (Day 18) ─────────────────────────
