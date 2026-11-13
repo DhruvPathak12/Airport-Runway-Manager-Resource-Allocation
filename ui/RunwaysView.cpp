@@ -686,6 +686,12 @@ QWidget* RunwaysView::createLiveTab()
 
     m_contentStack->addWidget(m_stateWidget);
     mainLayout->addWidget(m_contentStack);
+
+    // Read-only Transaction Monitor footer (Day 22)
+    m_txStatusLabel = new QLabel(QStringLiteral("⚡ Last Transaction: None"), this);
+    m_txStatusLabel->setStyleSheet(QStringLiteral("font-size: 11px; font-weight: 500; color: #475569; padding: 6px 12px; background-color: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; margin-top: 4px;"));
+    mainLayout->addWidget(m_txStatusLabel);
+
     return tab;
 }
 
@@ -780,6 +786,10 @@ void RunwaysView::refreshRunways()
     m_contentStack->setCurrentWidget(m_tableWidget);
     m_countBadge->setText(QStringLiteral("%1 Runways").arg(m_currentRunways.size()));
     m_countBadge->setStyleSheet("background-color: #e0f2fe; color: #0369a1; font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 12px; border: 1px solid #bae6fd;");
+
+    if (m_txStatusLabel && m_service) {
+        m_txStatusLabel->setText(m_service->lastTransactionSummary());
+    }
 }
 
 void RunwaysView::renderRunwayTable(const QList<Models::Runway> &runwayList)

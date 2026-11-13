@@ -93,6 +93,9 @@ private:
   QLabel *m_stateMessage = nullptr;
   QPushButton *m_stateButton = nullptr;
 
+  // ── Day 22 Read-Only Transaction Monitor Label ───────────────────────────
+  QLabel *m_txStatusLabel = nullptr;
+
   // ── Demonstration Tab Controls (Day 20) ──────────────────────────────────
   QComboBox *m_demoRunwayCombo = nullptr;
   QSpinBox *m_demoThreadSpin = nullptr;

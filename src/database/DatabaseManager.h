@@ -133,6 +133,32 @@ public:
      */
     bool rollbackTransaction();
 
+    /**
+     * @brief Creates and opens an independent named QSqlDatabase connection with loaded credentials.
+     * Used for multi-client concurrent transaction testing (e.g. Day 22 isolation verification).
+     * The caller is responsible for closing the connection and removing it via removeNamedConnection().
+     *
+     * @param connectionName Unique named connection identifier.
+     * @param outError Optional output receiving sanitized error on failure.
+     * @return QSqlDatabase configured and opened, or an invalid database if failed.
+     */
+    QSqlDatabase createNamedConnection(const QString &connectionName, QString *outError = nullptr);
+
+    /**
+     * @brief Safely closes and removes a named database connection from Qt SQL registry.
+     */
+    static void removeNamedConnection(const QString &connectionName);
+
+    /**
+     * @brief Returns the configured transaction isolation level of the MySQL server (e.g. "REPEATABLE-READ").
+     */
+    QString getTransactionIsolationLevel(const QSqlDatabase &db = QSqlDatabase());
+
+    /**
+     * @brief Returns the innodb_flush_log_at_trx_commit durability setting (e.g. "1").
+     */
+    QString getInnodbFlushLogSetting(const QSqlDatabase &db = QSqlDatabase());
+
 private:
     DatabaseManager();
     ~DatabaseManager();

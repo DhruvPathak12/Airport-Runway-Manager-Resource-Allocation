@@ -410,6 +410,102 @@ bool DatabaseManager::rollbackTransaction()
     return ok;
 }
 
+QSqlDatabase DatabaseManager::createNamedConnection(const QString &connectionName, QString *outError)
+{
+    if (connectionName.isEmpty() || connectionName == CONNECTION_NAME) {
+        if (outError) {
+            *outError = QStringLiteral("Invalid connection name for independent connection.");
+        }
+        return QSqlDatabase();
+    }
+
+    if (!isDriverAvailable()) {
+        if (outError) {
+            *outError = QStringLiteral("Qt SQL 'QMYSQL' driver plugin is not available.");
+        }
+        return QSqlDatabase();
+    }
+
+    if (m_config.isEmpty() && !loadConfig()) {
+        if (outError) {
+            *outError = QStringLiteral("Database configuration is missing or invalid.");
+        }
+        return QSqlDatabase();
+    }
+
+    QSqlDatabase db;
+    if (QSqlDatabase::contains(connectionName)) {
+        db = QSqlDatabase::database(connectionName);
+    } else {
+        db = QSqlDatabase::addDatabase(QStringLiteral("QMYSQL"), connectionName);
+    }
+
+    db.setHostName(m_config.value(QStringLiteral("host")));
+    db.setPort(m_config.value(QStringLiteral("port")).toInt());
+    db.setDatabaseName(m_config.value(QStringLiteral("database")));
+    db.setUserName(m_config.value(QStringLiteral("username")));
+    db.setPassword(m_config.value(QStringLiteral("password")));
+
+    if (!db.open()) {
+        QString err = db.lastError().text();
+        if (outError) {
+            *outError = err;
+        }
+        qWarning() << "[DatabaseManager] createNamedConnection failed for" << connectionName << ":" << err;
+        return QSqlDatabase();
+    }
+
+    return db;
+}
+
+void DatabaseManager::removeNamedConnection(const QString &connectionName)
+{
+    if (QSqlDatabase::contains(connectionName)) {
+        {
+            QSqlDatabase db = QSqlDatabase::database(connectionName, false);
+            if (db.isOpen()) {
+                db.close();
+            }
+        }
+        QSqlDatabase::removeDatabase(connectionName);
+    }
+}
+
+QString DatabaseManager::getTransactionIsolationLevel(const QSqlDatabase &db)
+{
+    QSqlDatabase targetDb = db.isValid() ? db : database();
+    if (!targetDb.isOpen()) {
+        return QStringLiteral("Unknown (Not Connected)");
+    }
+
+    QSqlQuery q(targetDb);
+    // In MySQL 8+: SELECT @@transaction_isolation
+    if (q.exec(QStringLiteral("SELECT @@transaction_isolation;")) && q.next()) {
+        return q.value(0).toString();
+    }
+    // Fallback for MySQL 5.7: SELECT @@tx_isolation
+    if (q.exec(QStringLiteral("SELECT @@tx_isolation;")) && q.next()) {
+        return q.value(0).toString();
+    }
+
+    return QStringLiteral("Unknown");
+}
+
+QString DatabaseManager::getInnodbFlushLogSetting(const QSqlDatabase &db)
+{
+    QSqlDatabase targetDb = db.isValid() ? db : database();
+    if (!targetDb.isOpen()) {
+        return QStringLiteral("Unknown (Not Connected)");
+    }
+
+    QSqlQuery q(targetDb);
+    if (q.exec(QStringLiteral("SHOW VARIABLES LIKE 'innodb_flush_log_at_trx_commit';")) && q.next()) {
+        return q.value(1).toString();
+    }
+
+    return QStringLiteral("Unknown");
+}
+
 void DatabaseManager::setSanitizedError(const QString &rawError)
 {
     QString sanitized = rawError.trimmed();

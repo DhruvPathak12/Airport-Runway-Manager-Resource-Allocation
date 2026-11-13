@@ -137,6 +137,65 @@ public:
     bool releaseRunway(int runwayId, QString *outError = nullptr);
     bool releaseRunwayResource(int runwayId, QString *outError = nullptr);
 
+    // ── Transaction Verification & Diagnostics (Day 22) ──────────────────────
+    struct TransactionSummary {
+        QString operation;       // "RUNWAY_ASSIGN", "RUNWAY_RELEASE"
+        int runwayId = 0;
+        int flightId = 0;
+        QString status;          // "Committed", "Rolled Back", "Failed", "None"
+        QString timestamp;
+        QString message;
+    };
+
+    /**
+     * @brief Returns summary metadata of the last executed database transaction.
+     */
+    TransactionSummary lastTransaction() const;
+
+    /**
+     * @brief Returns a human-readable one-line summary of the last transaction for the UI.
+     */
+    QString lastTransactionSummary() const;
+
+    /**
+     * @brief Controlled failure stages for deterministic Day 22 Atomicity verification.
+     */
+    enum class AllocationFailureStage {
+        None,
+        BeforeInsertAssignment,
+        DuringInsertAssignment,
+        DuringUpdateRunway,
+        DuringUpdateFlight,
+        DuringInsertOperationLog,
+        DuringCommit
+    };
+
+    enum class ReleaseFailureStage {
+        None,
+        DuringUpdateAssignment,
+        DuringUpdateRunway,
+        DuringInsertOperationLog,
+        DuringCommit
+    };
+
+    void setAllocationFailureStage(AllocationFailureStage stage);
+    AllocationFailureStage allocationFailureStage() const;
+
+    void setReleaseFailureStage(ReleaseFailureStage stage);
+    ReleaseFailureStage releaseFailureStage() const;
+
+    /**
+     * @brief Reconciles persistent database state when a transaction commit outcome is uncertain
+     * (e.g. client connection drops right as COMMIT was sent).
+     * Inspects runways, flights, runway_assignments, and operation_logs to determine true server state.
+     *
+     * @param runwayId Runway ID in question.
+     * @param flightId Flight ID in question.
+     * @param outStatus Optional output receiving detailed reconciliation verdict.
+     * @return true if database state is completely consistent and verified; false if manual intervention required.
+     */
+    bool reconcileTransactionState(int runwayId, int flightId, QString *outStatus = nullptr);
+
     /**
      * @brief Returns all flights eligible for runway allocation.
      * Excludes terminal flights (Landed, Departed, Cancelled) and flights that already
@@ -567,5 +626,10 @@ private:
     Scheduler       *m_scheduler       = nullptr;
     ResourceManager *m_resourceManager = nullptr;
     Session          m_session;
+
+    // Day 22 Transaction Diagnostics & Controlled Testing
+    TransactionSummary     m_lastTx;
+    AllocationFailureStage m_allocFailureStage   = AllocationFailureStage::None;
+    ReleaseFailureStage    m_releaseFailureStage = ReleaseFailureStage::None;
 };
 
