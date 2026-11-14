@@ -628,6 +628,81 @@ public:
      */
     ScheduleAndAllocateResult scheduleAndAllocateNext(QString *outError = nullptr);
 
+    // ── Day 24: System Dashboard & Monitoring Structures ─────────────────────
+    struct OperationLogEntry {
+        int logId = 0;
+        int userId = 0;
+        QString username;
+        QString operationType;
+        int flightId = 0;
+        QString flightNumber;
+        int runwayId = 0;
+        QString runwayNumber;
+        QString transactionStatus;
+        QString message;
+        QDateTime createdAt;
+    };
+
+    struct DashboardSummary {
+        // Flight KPIs
+        int totalFlights = 0;
+        int scheduledFlights = 0;
+        int activeFlights = 0;       // Non-terminal: Scheduled, Taxiing, Cleared
+        int emergencyFlights = 0;    // Active is_emergency == 1
+
+        // Runway KPIs
+        int totalRunways = 0;
+        int availableRunways = 0;
+        int occupiedRunways = 0;
+        int maintenanceRunways = 0;
+        double runwayUtilization = 0.0; // (occupied / total) * 100, safe on 0
+
+        // OS Process Scheduling KPIs
+        int readyQueueDepth = 0;
+        int runningProcesses = 0;
+        int completedProcesses = 0;
+        double averageWaitingTime = 0.0;
+        double averageTurnaroundTime = 0.0;
+        QString schedulingPolicy;
+        bool isAgingActive = false;
+        int agingIntervalSeconds = 30;
+        Models::Process highestPriorityWaitingProcess;
+        bool hasHighestPriorityWaiting = false;
+
+        // Active Emergency Flight Details
+        QList<Models::Flight> activeEmergencyFlights;
+
+        // Recent Activity Details
+        TransactionSummary lastTx;
+        QList<OperationLogEntry> recentLogs;
+        QList<Models::Flight> recentFlights;
+        QList<Models::Runway> runwaysOverview;
+    };
+
+    /**
+     * @brief Fetches aggregated data-driven dashboard statistics from MySQL and OS subsystems.
+     * Guaranteed to use actual state without hardcoded, mocked, or fabricated statistics.
+     *
+     * @param outError Optional output string receiving error description on failure.
+     * @return DashboardSummary populated with live application and database state.
+     */
+    DashboardSummary getDashboardSummary(QString *outError = nullptr);
+
+    /**
+     * @brief Fetches the latest operation audit logs from operation_logs table.
+     *
+     * @param limit Maximum number of records to retrieve (default 10).
+     * @param outError Optional output string receiving error description on failure.
+     * @return List of OperationLogEntry ordered by log_id DESC.
+     */
+    QList<OperationLogEntry> getRecentOperationLogs(int limit = 10, QString *outError = nullptr);
+
+    /**
+     * @brief Calculates current runway utilization percentage: (Occupied / Total) * 100.
+     * Handles zero total runways safely (returns 0.0).
+     */
+    double getRunwayUtilizationPercentage(QString *outError = nullptr);
+
 signals:
     /**
      * @brief Emitted when priority aging is evaluated.

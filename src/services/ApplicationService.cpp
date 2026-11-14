@@ -5301,3 +5301,214 @@ ApplicationService::ScheduleAndAllocateResult ApplicationService::scheduleAndAll
                        .arg(dispatched.effectivePriority);
   return result;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Day 24: System Dashboard & Operational Monitoring Methods
+// ─────────────────────────────────────────────────────────────────────────────
+
+double ApplicationService::getRunwayUtilizationPercentage(QString *outError) {
+  if (!checkDatabaseConnection()) {
+    if (outError) *outError = QStringLiteral("Database connection is offline.");
+    return 0.0;
+  }
+
+  QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+  if (!db.isOpen()) {
+    if (outError) *outError = QStringLiteral("Database connection is not open.");
+    return 0.0;
+  }
+
+  QSqlQuery q(db);
+  if (!q.exec(QStringLiteral("SELECT COUNT(*) AS total, "
+                            "SUM(CASE WHEN status = 'Occupied' THEN 1 ELSE 0 END) AS occ "
+                            "FROM runways;"))) {
+    if (outError) *outError = q.lastError().text();
+    return 0.0;
+  }
+
+  if (q.next()) {
+    int total = q.value(0).toInt();
+    int occ = q.value(1).toInt();
+    if (total <= 0) {
+      return 0.0; // Safe handling of zero total runways
+    }
+    return (static_cast<double>(occ) / static_cast<double>(total)) * 100.0;
+  }
+
+  return 0.0;
+}
+
+QList<ApplicationService::OperationLogEntry> ApplicationService::getRecentOperationLogs(int limit, QString *outError) {
+  if (limit <= 0) limit = 10;
+
+  if (!checkDatabaseConnection()) {
+    if (outError) *outError = QStringLiteral("Database connection is offline.");
+    return {};
+  }
+
+  QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+  if (!db.isOpen()) {
+    if (outError) *outError = QStringLiteral("Database connection is not open.");
+    return {};
+  }
+
+  QSqlQuery q(db);
+  q.prepare(QStringLiteral(
+      "SELECT l.log_id, l.user_id, COALESCE(u.username, 'System') AS username, "
+      "       l.operation_type, l.flight_id, COALESCE(f.flight_number, '') AS flight_number, "
+      "       l.runway_id, COALESCE(r.runway_number, '') AS runway_number, "
+      "       l.transaction_status, COALESCE(l.message, '') AS message, l.created_at "
+      "FROM operation_logs l "
+      "LEFT JOIN users u ON l.user_id = u.user_id "
+      "LEFT JOIN flights f ON l.flight_id = f.flight_id "
+      "LEFT JOIN runways r ON l.runway_id = r.runway_id "
+      "ORDER BY l.log_id DESC "
+      "LIMIT :limit;"));
+  q.bindValue(QStringLiteral(":limit"), limit);
+
+  if (!q.exec()) {
+    if (outError) *outError = q.lastError().text();
+    return {};
+  }
+
+  QList<OperationLogEntry> logs;
+  while (q.next()) {
+    OperationLogEntry entry;
+    entry.logId = q.value(0).toInt();
+    entry.userId = q.value(1).toInt();
+    entry.username = q.value(2).toString();
+    entry.operationType = q.value(3).toString();
+    entry.flightId = q.value(4).toInt();
+    entry.flightNumber = q.value(5).toString();
+    entry.runwayId = q.value(6).toInt();
+    entry.runwayNumber = q.value(7).toString();
+    entry.transactionStatus = q.value(8).toString();
+    entry.message = q.value(9).toString();
+    entry.createdAt = q.value(10).toDateTime();
+    logs.append(entry);
+  }
+
+  return logs;
+}
+
+ApplicationService::DashboardSummary ApplicationService::getDashboardSummary(QString *outError) {
+  DashboardSummary summary;
+
+  // 1. OS Scheduling & ReadyQueue Metrics (derived from in-memory state)
+  summary.schedulingPolicy = QStringLiteral("Non-Preemptive Priority Scheduling (Tie-breakers: Arrival Time, Flight ID)");
+  summary.isAgingActive = isAgingRunning();
+  summary.agingIntervalSeconds = agingInterval();
+
+  if (m_scheduler) {
+    summary.readyQueueDepth = m_scheduler->readyQueue().size();
+    summary.runningProcesses = m_scheduler->hasRunningProcess() ? 1 : 0;
+
+    Scheduler::PerformanceMetrics pm = getAggregateSchedulingMetrics();
+    summary.completedProcesses = pm.completedCount;
+    summary.averageWaitingTime = pm.averageWaitingTime;
+    summary.averageTurnaroundTime = pm.averageTurnaroundTime;
+
+    Models::Process candidate;
+    QString selReason;
+    if (m_scheduler->selectNextProcess(&candidate, &selReason)) {
+      summary.highestPriorityWaitingProcess = candidate;
+      summary.hasHighestPriorityWaiting = true;
+    }
+  }
+
+  // 2. Last Transaction Diagnostics
+  summary.lastTx = lastTransaction();
+
+  // 3. Database State Queries (if connected)
+  if (checkDatabaseConnection()) {
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (db.isOpen()) {
+      // 3a. Flight Aggregates
+      QSqlQuery fq(db);
+      if (fq.exec(QStringLiteral(
+              "SELECT COUNT(*) AS total, "
+              "       SUM(CASE WHEN operational_status = 'Scheduled' THEN 1 ELSE 0 END) AS scheduled, "
+              "       SUM(CASE WHEN operational_status IN ('Scheduled','Taxiing','Cleared') THEN 1 ELSE 0 END) AS active, "
+              "       SUM(CASE WHEN is_emergency = 1 THEN 1 ELSE 0 END) AS emergency "
+              "FROM flights;"))) {
+        if (fq.next()) {
+          summary.totalFlights = fq.value(0).toInt();
+          summary.scheduledFlights = fq.value(1).toInt();
+          summary.activeFlights = fq.value(2).toInt();
+          summary.emergencyFlights = fq.value(3).toInt();
+        }
+      }
+
+      // 3b. Active Emergency Flights Details
+      QSqlQuery eq(db);
+      if (eq.exec(QStringLiteral(
+              "SELECT f.flight_id, f.flight_number, f.airline, f.priority, f.is_emergency, "
+              "       f.operational_status, f.flight_type, f.source, f.destination, "
+              "       COALESCE(r.runway_number, '') AS assigned_runway "
+              "FROM flights f "
+              "LEFT JOIN runway_assignments ra ON f.flight_id = ra.flight_id AND ra.status = 'Active' "
+              "LEFT JOIN runways r ON ra.runway_id = r.runway_id "
+              "WHERE f.is_emergency = 1 AND f.operational_status NOT IN ('Landed','Departed','Cancelled') "
+              "ORDER BY f.flight_id ASC;"))) {
+        while (eq.next()) {
+          Models::Flight ef;
+          ef.id = eq.value(0).toInt();
+          ef.flightNumber = eq.value(1).toString();
+          ef.airline = eq.value(2).toString();
+          ef.priority = eq.value(3).toInt();
+          ef.isEmergency = eq.value(4).toBool();
+          ef.operationalStatus = eq.value(5).toString();
+          ef.flightType = eq.value(6).toString();
+          ef.source = eq.value(7).toString();
+          ef.destination = eq.value(8).toString();
+          summary.activeEmergencyFlights.append(ef);
+        }
+      }
+
+      // 3c. Runway Aggregates
+      QSqlQuery rq(db);
+      if (rq.exec(QStringLiteral(
+              "SELECT COUNT(*) AS total, "
+              "       SUM(CASE WHEN status = 'Available' THEN 1 ELSE 0 END) AS avail, "
+              "       SUM(CASE WHEN status = 'Occupied' THEN 1 ELSE 0 END) AS occ, "
+              "       SUM(CASE WHEN status = 'Maintenance' THEN 1 ELSE 0 END) AS maint "
+              "FROM runways;"))) {
+        if (rq.next()) {
+          summary.totalRunways = rq.value(0).toInt();
+          summary.availableRunways = rq.value(1).toInt();
+          summary.occupiedRunways = rq.value(2).toInt();
+          summary.maintenanceRunways = rq.value(3).toInt();
+        }
+      }
+
+      // Safe calculation of runway utilization %
+      if (summary.totalRunways > 0) {
+        summary.runwayUtilization = (static_cast<double>(summary.occupiedRunways) /
+                                     static_cast<double>(summary.totalRunways)) * 100.0;
+      } else {
+        summary.runwayUtilization = 0.0;
+      }
+
+      // 3d. Recent Flights Overview (up to 8 records)
+      summary.recentFlights = getAllFlights(QString(), QString(), nullptr);
+      if (summary.recentFlights.size() > 8) {
+        summary.recentFlights = summary.recentFlights.mid(0, 8);
+      }
+
+      // 3e. Runways Overview
+      summary.runwaysOverview = getAllRunways(QString(), QString(), nullptr);
+
+      // 3f. Recent Operation Logs
+      summary.recentLogs = getRecentOperationLogs(10, nullptr);
+    }
+  } else {
+    // Offline mode: Handle zero total runways and report offline status
+    summary.totalRunways = 0;
+    summary.runwayUtilization = 0.0;
+    if (outError) {
+      *outError = QStringLiteral("Database is offline. Showing available in-memory OS scheduling state.");
+    }
+  }
+
+  return summary;
+}

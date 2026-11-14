@@ -7,6 +7,7 @@
 
 class ApplicationService;
 class LoginView;
+class DashboardView;
 class FlightsView;
 class AircraftView;
 class RunwaysView;
@@ -42,6 +43,7 @@ private:
     // ── UI components ─────────────────────────────────────────────────────────
     QStackedWidget *m_mainStack     = nullptr; // 0: LoginView, 1: Main shell
     LoginView      *m_loginView     = nullptr;
+    DashboardView  *m_dashboardView = nullptr;
     FlightsView    *m_flightsView   = nullptr;
     AircraftView   *m_aircraftView  = nullptr;
     RunwaysView    *m_runwaysView    = nullptr;

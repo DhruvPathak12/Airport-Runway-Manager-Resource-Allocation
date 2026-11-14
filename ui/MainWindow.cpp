@@ -29,6 +29,7 @@ static const struct {
 static constexpr int NAV_COUNT = sizeof(NAV_ITEMS) / sizeof(NAV_ITEMS[0]);
 
 #include "ui/LoginView.h"
+#include "ui/DashboardView.h"
 #include "ui/FlightsView.h"
 #include "ui/AircraftView.h"
 #include "ui/RunwaysView.h"
@@ -183,7 +184,19 @@ void MainWindow::setupNavigation()
 void MainWindow::setupPages()
 {
     for (int i = 0; i < NAV_COUNT; ++i) {
-        if (i == 1) { // Flights page (Day 7)
+        if (i == 0) { // Dashboard page (Day 24)
+            m_dashboardView = new DashboardView(m_service, this);
+            connect(m_dashboardView, &DashboardView::navigateToFlights, this, [this]() {
+                m_navList->setCurrentRow(1);
+            });
+            connect(m_dashboardView, &DashboardView::navigateToRunways, this, [this]() {
+                m_navList->setCurrentRow(3);
+            });
+            connect(m_dashboardView, &DashboardView::navigateToScheduling, this, [this]() {
+                m_navList->setCurrentRow(4);
+            });
+            m_pageStack->addWidget(m_dashboardView);
+        } else if (i == 1) { // Flights page (Day 7)
             m_flightsView = new FlightsView(m_service, this);
             m_pageStack->addWidget(m_flightsView);
         } else if (i == 2) { // Aircraft page (Day 8)
@@ -242,7 +255,9 @@ void MainWindow::onNavItemChanged(int row)
 {
     if (row >= 0 && row < m_pageStack->count()) {
         m_pageStack->setCurrentIndex(row);
-        if (row == 1 && m_flightsView) {
+        if (row == 0 && m_dashboardView) {
+            m_dashboardView->refreshDashboard();
+        } else if (row == 1 && m_flightsView) {
             m_flightsView->refreshFlights();
         } else if (row == 2 && m_aircraftView) {
             m_aircraftView->refreshAircraft();
@@ -316,6 +331,9 @@ void MainWindow::onUserLoggedIn()
     applyRolePermissions();
     updateDatabaseStatus();
 
+    if (m_dashboardView) {
+        m_dashboardView->refreshDashboard();
+    }
     if (m_flightsView) {
         m_flightsView->updatePermissions();
         m_flightsView->refreshFlights();
