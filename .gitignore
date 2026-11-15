@@ -7,6 +7,7 @@
 db.conf
 cradential.txt
 *credential*.txt
+*backup*.sql
 
 # --- CMake build output ---
 build/
