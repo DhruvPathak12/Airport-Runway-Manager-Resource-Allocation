@@ -97,7 +97,7 @@ graph TD
 | **Phase 1** | System Overview & Architecture | 2 min | Title slide & system architecture diagram | Bridges aviation operations with OS and DBMS paradigms. |
 | **Phase 2** | Authentication & RBAC | 2 min | Log in as `operator_demo`, then `atc_demo` | Enforces least-privilege role boundaries; SHA-256 hashed credentials. |
 | **Phase 3** | Flight & Aircraft Management | 2 min | Flight Table showing BOM demo fleet | Demonstrates entity relationships and baseline process states. |
-| **Phase 4** | OS Scheduling & Emergency Handling | 4 min | Step Ready Queue; Declare emergency on AI-303 | Priority 1 = highest; tie-breakers; non-preemptive guarantee verified. |
+| **Phase 4** | OS Scheduling & Emergency Priority Escalation | 4 min | Step Ready Queue; Declare emergency on AI-303 | Priority 1 = highest; tie-breakers; non-preemptive guarantee verified. |
 | **Phase 5** | Priority Aging & Starvation Demo | 2 min | Starvation tab: simulate inflow; enable aging | Demonstrates starvation vulnerability and dynamic mathematical cure. |
 | **Phase 6** | Critical Sections & Multithreading | 3 min | Concurrent Allocation Demo with 2 threads | `std::mutex` and RAII lock prevent double-allocation race conditions. |
 | **Phase 7** | MySQL Transactions & ACID Proof | 3 min | Runway allocation; failure injection rollback | Multi-table atomic commit; zero partial writes verified in DB. |
@@ -110,7 +110,7 @@ graph TD
 | Potential Issue During Demo | Root Cause | Immediate Contingency Procedure |
 |---|---|---|
 | **MySQL connection drops** | Service stopped or port conflict | Run `net start MySQL80` in PowerShell (Admin), then press `Ctrl+R` in SmartATC. |
-| **Data in unexpected state** | Previous test left active assignments | Run `SmartATC/docs/demo/demo_reset.sql` via MySQL CLI; executes in < 0.2s. |
+| **Data in unexpected state** | Previous test left active assignments | Run `SmartATC/docs/demo/demo_reset.sql` via MySQL CLI to restore baseline. |
 | **Projector cuts off UI edges** | Low resolution on projector | Press `F11` (or maximize window) to trigger responsive Qt layouts. |
 | **Concurrent demo finishes too fast** | Microsecond thread execution | Use the built-in artificial delay slider in `ConcurrentAllocationDemo` (set to 200ms). |
 | **Examiner requests raw DB proof** | Wants to verify that UI is not faking data | Open MySQL Workbench or Windows Terminal side-by-side with SmartATC and run live queries. |

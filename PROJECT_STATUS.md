@@ -1355,7 +1355,8 @@ All 6 CTest suites pass 100%:
   5. `DBMS_TRANSACTION_DEMO.md`: Real MySQL-backed transaction demonstration: pessimistic row locking (`SELECT ... FOR UPDATE`), atomic multi-table commit, failure-injection rollback, and ACID property verification.
   6. `DEMO_RESET_GUIDE.md`: Non-destructive, idempotent reset runbook, SQL queries, and sync procedures.
   7. `demo_reset.sql`: Executable non-destructive SQL reset script.
-  8. `DEMONSTRATION_CHECKLIST.md`: Comprehensive 38-point pre-flight and presentation verification checklist (all marked PASS).
+  8. `DEMONSTRATION_CHECKLIST.md`: Comprehensive 38-point pre-flight and presentation verification checklist (28 PASS, 10 NOT TESTED for live presentation).
+- Completed focused Day 27 Accuracy and Safety Audit: verified non-preemptive scheduling terminology, confirmed AgingEngine 30s default interval, aligned C++ ProcessState enum (`New`, `Ready`, `Running`, `Blocked`, `Completed`), verified demo accounts (`admin_demo`, `atc_demo`, `operator_demo`), audited `demo_reset.sql` schema compliance and safety invariants, distinguished Type A vs Type B rollbacks, and clarified ACID durability vs isolation.
 
 ---
 

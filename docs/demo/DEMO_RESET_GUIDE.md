@@ -17,24 +17,24 @@ Before resetting the system, inspect current database records to identify unrele
 
 ```sql
 -- Step 1: Check Current Runway Allocations & Statuses
-SELECT id, runway_code, status, runway_type 
+SELECT runway_id, runway_number, status, runway_type 
 FROM runways 
-ORDER BY id ASC;
+ORDER BY runway_id ASC;
 
 -- Step 2: Check Active Runway Assignments
-SELECT id, flight_id, runway_id, assigned_at, released_at, status 
+SELECT assignment_id, flight_id, runway_id, assigned_at, released_at, status 
 FROM runway_assignments 
 WHERE status = 'Active';
 
 -- Step 3: Check Operational Status & Emergency Flags of Demo Flights
-SELECT id, flight_number, airline, operational_status, emergency_flag, base_priority, effective_priority 
+SELECT flight_id, flight_number, airline, operational_status, is_emergency, priority 
 FROM flights 
 WHERE flight_number IN ('AI-101', '6E-202', 'AI-303', 'SG-404', 'UK-505');
 
 -- Step 4: Check Queued Scheduling Processes
-SELECT id, flight_id, state, current_priority, wait_time_seconds 
+SELECT queue_id, flight_id, process_state, base_priority, effective_priority, waiting_time 
 FROM scheduling_queue 
-ORDER BY id ASC;
+ORDER BY queue_id ASC;
 ```
 
 ---
@@ -64,52 +64,50 @@ WHERE status = 'Active';
 -- Runway 3 (27):  Maintenance (Simulated closed runway)
 UPDATE runways
 SET status = 'Available'
-WHERE id IN (1, 2);
+WHERE runway_id IN (1, 2);
 
 UPDATE runways
 SET status = 'Maintenance'
-WHERE id = 3;
+WHERE runway_id = 3;
 
--- 3. Reset demo flights to baseline Scheduled / Queued states
--- Clear emergency flags and reset effective priorities to base priorities
+-- 3. Reset demo flights to baseline Scheduled states and clear emergency flags
 UPDATE flights
 SET operational_status = 'Scheduled',
-    emergency_flag = 0,
-    effective_priority = base_priority
+    is_emergency = 0
 WHERE flight_number IN ('AI-101', '6E-202', 'AI-303', 'SG-404', 'UK-505');
 
--- Specifically set AI-303 to base priority 3 (Normal) and not emergency
-UPDATE flights
-SET base_priority = 3,
-    effective_priority = 3,
-    emergency_flag = 0
-WHERE flight_number = 'AI-303';
-
--- Specifically ensure baseline priorities:
+-- Specifically verify priorities:
 -- AI-101 (Priority 2)
-UPDATE flights SET base_priority = 2, effective_priority = 2 WHERE flight_number = 'AI-101';
+UPDATE flights SET priority = 2 WHERE flight_number = 'AI-101';
 -- 6E-202 (Priority 3)
-UPDATE flights SET base_priority = 3, effective_priority = 3 WHERE flight_number = '6E-202';
+UPDATE flights SET priority = 3 WHERE flight_number = '6E-202';
+-- AI-303 (Priority 3)
+UPDATE flights SET priority = 3 WHERE flight_number = 'AI-303';
 -- SG-404 (Priority 4)
-UPDATE flights SET base_priority = 4, effective_priority = 4 WHERE flight_number = 'SG-404';
+UPDATE flights SET priority = 4 WHERE flight_number = 'SG-404';
 -- UK-505 (Priority 5)
-UPDATE flights SET base_priority = 5, effective_priority = 5 WHERE flight_number = 'UK-505';
+UPDATE flights SET priority = 5 WHERE flight_number = 'UK-505';
 
 -- 4. Reset in-database scheduling queue state
--- Delete temporary transient demo queues or reset process states to Ready
 DELETE FROM scheduling_queue WHERE flight_id IN (
-    SELECT id FROM flights WHERE flight_number IN ('AI-101', '6E-202', 'AI-303', 'SG-404', 'UK-505')
+    SELECT flight_id FROM flights WHERE flight_number IN ('AI-101', '6E-202', 'AI-303', 'SG-404', 'UK-505')
 );
 
-INSERT INTO scheduling_queue (flight_id, state, current_priority, wait_time_seconds, created_at)
-SELECT id, 'Ready', base_priority, 0, NOW()
+INSERT INTO scheduling_queue (flight_id, arrival_time, ready_since, base_priority, effective_priority, aging_level, service_time, process_state)
+SELECT flight_id, NOW(), NOW(), priority, priority, 0, 60, 'Ready'
 FROM flights
 WHERE flight_number IN ('AI-101', '6E-202', 'AI-303', 'SG-404', 'UK-505')
-ORDER BY base_priority ASC;
+ORDER BY priority ASC, flight_id ASC;
 
 -- 5. Record autonomous audit log entry for the reset operation
-INSERT INTO operation_logs (user_id, action, details, transaction_status, created_at)
-VALUES (1, 'SYSTEM_RESET', 'Demonstration baseline state successfully re-established.', 'Committed', NOW());
+INSERT INTO operation_logs (user_id, operation_type, transaction_status, message, created_at)
+VALUES (
+    (SELECT user_id FROM users WHERE username = 'admin_demo' LIMIT 1),
+    'SYSTEM_RESET',
+    'Committed',
+    'Demonstration baseline state successfully re-established.',
+    NOW()
+);
 
 COMMIT;
 ```
@@ -118,7 +116,7 @@ COMMIT;
 
 ## 4. Post-Reset State Verification
 
-Execute this query block to verify that the system has successfully returned to the golden demonstration baseline:
+Execute this query block to verify that the system has successfully returned to the demonstration baseline:
 
 ```sql
 -- Verification Query
@@ -139,7 +137,7 @@ UNION ALL
 SELECT 
     'Demo Flights' AS Entity,
     COUNT(*),
-    SUM(CASE WHEN emergency_flag = 1 THEN 1 ELSE 0 END) AS EmergencyCount,
+    SUM(CASE WHEN is_emergency = 1 THEN 1 ELSE 0 END) AS EmergencyCount,
     SUM(CASE WHEN operational_status = 'Scheduled' THEN 1 ELSE 0 END) AS ScheduledCount,
     0
 FROM flights WHERE flight_number IN ('AI-101', '6E-202', 'AI-303', 'SG-404', 'UK-505');
@@ -165,22 +163,9 @@ Because SmartATC maintains an active in-memory cache and state manager (`Resourc
 2. **Recommended Clean Start for Official Evaluation:**
    - Close the `SmartATC.exe` application window.
    - Run the reset SQL script above.
-   - Launch `SmartATC.exe` fresh from the build directory or terminal:
+   - Launch `SmartATC.exe` fresh from the build directory:
      ```powershell
-     cd "d:\Projects\Airport Runway Manager &Resource Allocation\SmartATC\build"
+     cd "SmartATC\build"
      .\SmartATC.exe
      ```
    - All in-memory data structures (`ReadyQueue`, `ResourceManager`) will cleanly hydrate directly from the fresh MySQL baseline state upon startup.
-
----
-
-## 6. Fast Reset CLI Script (PowerShell Automation)
-
-For rapid reset between practice runs without opening MySQL Workbench:
-
-```powershell
-# Run from repository root in PowerShell
-mysql -u root -p smartatc -e "source SmartATC/docs/demo/demo_reset.sql"
-```
-
-*(Enter the MySQL root password when prompted. The reset executes in < 0.2 seconds).*
