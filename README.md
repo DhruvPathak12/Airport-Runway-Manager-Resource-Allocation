@@ -65,14 +65,26 @@ SmartATC includes complete, professional technical documentation, design specifi
 6. [**User Manual & Operator Guide**](docs/USER_MANUAL.md) — Step-by-step graphical walkthrough for Admin, ATC, and Airport Operator roles.
 7. [**Viva & Technical Defense Guide**](docs/VIVA_PREPARATION.md) — 25 in-depth technical viva questions and detailed answers covering OS, DBMS, and C++ concepts.
 
+### Final Viva & Oral Defense Package (Day 29 Capstone)
+8. [**Project Overview & Viva Defense Guide**](docs/viva/DAY_29_PROJECT_OVERVIEW.md) — 17-section comprehensive project explanation, 4-tier architecture, and technology justifications.
+9. [**OS Concepts Viva Guide**](docs/viva/DAY_29_OS_VIVA.md) — Deep-dive on PCB, C++ process states, non-preemptive priority scheduling, tie-breakers, emergency, aging, and mutex synchronization.
+10. [**DBMS Concepts Viva Guide**](docs/viva/DAY_29_DBMS_VIVA.md) — 8-table relational dictionary, 1NF/2NF/3NF normalization, prepared statements, and SQL injection prevention.
+11. [**C++, Qt & MySQL Integration Viva Guide**](docs/viva/DAY_29_CPP_QT_MYSQL_VIVA.md) — C++17 RAII, Qt Widgets, Signals & Slots, `DatabaseManager`, and 17-step GUI action execution trace.
+12. [**Transactions & ACID Viva Guide**](docs/viva/DAY_29_TRANSACTION_ACID_VIVA.md) — Exact allocation transaction sequence, ACID proofs, pessimistic row locking (`FOR UPDATE`), and Type A vs Type B rollback.
+13. [**Team Technical Contributions**](docs/viva/DAY_29_TEAM_CONTRIBUTIONS.md) — 4-member contribution profiles with classes, methods, tables, authored tests, challenges, and 60s/2min defense scripts.
+14. [**Comprehensive Viva Question Bank**](docs/viva/DAY_29_QUESTION_BANK.md) — Exhaustive 170-question viva question bank with short answers and detailed technical explanations.
+15. [**18-Minute Live Demonstration Script**](docs/viva/DAY_29_DEMONSTRATION_SCRIPT.md) — Realistic live demonstration script with exact screens, actions, expected results, and presenter lines.
+16. [**Top 20 Examiner Traps & Defense**](docs/viva/DAY_29_EXAMINER_TRAPS.md) — Strategic answers to common examiner trap questions.
+17. [**High-Yield Viva Revision Sheet**](docs/viva/DAY_29_FINAL_REVISION_SHEET.md) — 1-page quick revision sheet with key numbers, formulas, and 8-table cheat sheet.
+
 ### Final Demonstration & Evaluation Package (B.Tech Viva)
-8. [**Demonstration Master Guide**](docs/demo/DEMONSTRATION_GUIDE.md) — Master runbook, timing plan, navigation index, and viva contingency matrix.
-9. [**Demonstration Script & Viva Presentation**](docs/demo/DEMONSTRATION_SCRIPT.md) — Step-by-step 8-phase oral presentation script (18–20 minutes) with spoken text and cues.
-10. [**Demonstration Data Catalog**](docs/demo/DEMONSTRATION_DATA.md) — Concrete BOM scenario data: credentials, fleet, runways, and baseline PCB queue.
-11. [**OS Concepts Demonstration Guide**](docs/demo/OS_CONCEPT_DEMO.md) — Worked examples and verification of PCB, Priority Scheduling, Aging, and Mutex contention.
-12. [**DBMS Transaction Demonstration Guide**](docs/demo/DBMS_TRANSACTION_DEMO.md) — Real MySQL transactions, pessimistic row locking (`FOR UPDATE`), atomic commit, and rollback proof.
-13. [**Demonstration Reset Guide**](docs/demo/DEMO_RESET_GUIDE.md) — Non-destructive, idempotent reset instructions and SQL scripts.
-14. [**Demonstration Verification Checklist**](docs/demo/DEMONSTRATION_CHECKLIST.md) — Comprehensive 38-point pre-flight and live presentation verification audit.
+18. [**Demonstration Master Guide**](docs/demo/DEMONSTRATION_GUIDE.md) — Master runbook, timing plan, navigation index, and viva contingency matrix.
+19. [**Demonstration Script & Viva Presentation**](docs/demo/DEMONSTRATION_SCRIPT.md) — Step-by-step 8-phase oral presentation script (18–20 minutes) with spoken text and cues.
+20. [**Demonstration Data Catalog**](docs/demo/DEMONSTRATION_DATA.md) — Concrete BOM scenario data: credentials, fleet, runways, and baseline PCB queue.
+21. [**OS Concepts Demonstration Guide**](docs/demo/OS_CONCEPT_DEMO.md) — Worked examples and verification of PCB, Priority Scheduling, Aging, and Mutex contention.
+22. [**DBMS Transaction Demonstration Guide**](docs/demo/DBMS_TRANSACTION_DEMO.md) — Real MySQL transactions, pessimistic row locking (`FOR UPDATE`), atomic commit, and rollback proof.
+23. [**Demonstration Reset Guide**](docs/demo/DEMO_RESET_GUIDE.md) — Non-destructive, idempotent reset instructions and SQL scripts.
+24. [**Demonstration Verification Checklist**](docs/demo/DEMONSTRATION_CHECKLIST.md) — Comprehensive 38-point pre-flight and live presentation verification audit.
 
 ### Systems & Technical Design Specifications
 15. [**Operating System Concepts**](docs/OS_CONCEPTS.md) — Process models, scheduling formulas (CT, TAT, WT), aging algorithms, and mutex synchronization.
