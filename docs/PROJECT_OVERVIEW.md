@@ -111,3 +111,18 @@ SmartATC provides a native C++17 desktop application built on Qt 6 Widgets and a
 - **ACID Transaction Management:** Multi-statement atomic transactions (`transaction()`, `commit()`, `rollback()`) across runway allocations and releases.
 - **Concurrency Control & Isolation:** Pessimistic row locking (`SELECT ... FOR UPDATE`) in MySQL InnoDB preventing double allocation and lost updates.
 - **Audit Logging:** Synchronized logging in `operation_logs` capturing operation status, timestamps, and user actions.
+
+---
+
+## 10. Final Demonstration & Evaluation Package
+
+For academic defense and viva presentations, a dedicated suite of demonstration manuals, worked examples, and non-destructive reset runbooks is available in `docs/demo/`:
+
+1. [**Demonstration Master Guide**](demo/DEMONSTRATION_GUIDE.md) — Master runbook, timing plan, navigation index, and viva contingency matrix.
+2. [**Demonstration Script & Viva Presentation**](demo/DEMONSTRATION_SCRIPT.md) — Step-by-step 8-phase oral presentation script (18–20 minutes) with spoken text and cues.
+3. [**Demonstration Data Catalog**](demo/DEMONSTRATION_DATA.md) — Concrete BOM scenario data: credentials, fleet, runways, and baseline PCB queue.
+4. [**OS Concepts Demonstration Guide**](demo/OS_CONCEPT_DEMO.md) — Worked examples and verification of PCB, Priority Scheduling, Aging, and Mutex contention.
+5. [**DBMS Transaction Demonstration Guide**](demo/DBMS_TRANSACTION_DEMO.md) — Real MySQL transactions, pessimistic row locking (`FOR UPDATE`), atomic commit, and rollback proof.
+6. [**Demonstration Reset Guide**](demo/DEMO_RESET_GUIDE.md) — Non-destructive, idempotent reset instructions and SQL scripts.
+7. [**Demonstration Verification Checklist**](demo/DEMONSTRATION_CHECKLIST.md) — Comprehensive 38-point pre-flight and live presentation verification audit.
+

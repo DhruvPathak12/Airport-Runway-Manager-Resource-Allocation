@@ -65,17 +65,26 @@ SmartATC includes complete, professional technical documentation, design specifi
 6. [**User Manual & Operator Guide**](docs/USER_MANUAL.md) — Step-by-step graphical walkthrough for Admin, ATC, and Airport Operator roles.
 7. [**Viva & Technical Defense Guide**](docs/VIVA_PREPARATION.md) — 25 in-depth technical viva questions and detailed answers covering OS, DBMS, and C++ concepts.
 
+### Final Demonstration & Evaluation Package (B.Tech Viva)
+8. [**Demonstration Master Guide**](docs/demo/DEMONSTRATION_GUIDE.md) — Master runbook, timing plan, navigation index, and viva contingency matrix.
+9. [**Demonstration Script & Viva Presentation**](docs/demo/DEMONSTRATION_SCRIPT.md) — Step-by-step 8-phase oral presentation script (18–20 minutes) with spoken text and cues.
+10. [**Demonstration Data Catalog**](docs/demo/DEMONSTRATION_DATA.md) — Concrete BOM scenario data: credentials, fleet, runways, and baseline PCB queue.
+11. [**OS Concepts Demonstration Guide**](docs/demo/OS_CONCEPT_DEMO.md) — Worked examples and verification of PCB, Priority Scheduling, Aging, and Mutex contention.
+12. [**DBMS Transaction Demonstration Guide**](docs/demo/DBMS_TRANSACTION_DEMO.md) — Real MySQL transactions, pessimistic row locking (`FOR UPDATE`), atomic commit, and rollback proof.
+13. [**Demonstration Reset Guide**](docs/demo/DEMO_RESET_GUIDE.md) — Non-destructive, idempotent reset instructions and SQL scripts.
+14. [**Demonstration Verification Checklist**](docs/demo/DEMONSTRATION_CHECKLIST.md) — Comprehensive 38-point pre-flight and live presentation verification audit.
+
 ### Systems & Technical Design Specifications
-8. [**Operating System Concepts**](docs/OS_CONCEPTS.md) — Process models, scheduling formulas (CT, TAT, WT), aging algorithms, and mutex synchronization.
-9. [**Scheduler Design & Implementation**](docs/SCHEDULER_DESIGN.md) — Priority comparison logic, tie-breaking rules, emergency override, and worked scheduling examples.
-10. [**Runway Resource Allocation**](docs/RESOURCE_ALLOCATION.md) — Runway compatibility matrix, dual-layer state management, and critical section protection.
-11. [**DBMS Design & Relational Modeling**](docs/DBMS_DESIGN.md) — Relational algebra, 1NF/2NF/3NF normalization analysis, indexing strategy, and row locking.
-12. [**Database Schema Specification**](docs/DATABASE_SCHEMA.md) — Complete 8-table relational dictionary with data types, keys, and foreign constraints.
-13. [**Transactions & ACID Verification**](docs/TRANSACTION_AND_ACID.md) — Multi-statement atomic transactions, failure injection tests, and durability verification.
-14. [**Module Design Specification**](docs/MODULE_DESIGN.md) — Architectural specifications for all 6 functional subsystems.
-15. [**GUI & Presentation Layer**](docs/GUI_DOCUMENTATION.md) — Screen catalog, widgets, visual indicators, and live window capture instructions.
-16. [**Testing & Quality Assurance Report**](docs/TESTING_REPORT.md) — Test environment, 19 CTest test suites summary, and Day 25 defect resolutions.
-17. [**Security & Integrity Considerations**](docs/SECURITY_CONSIDERATIONS.md) — SHA-256 hashing, SQL injection defense, credential isolation, and audit trails.
+15. [**Operating System Concepts**](docs/OS_CONCEPTS.md) — Process models, scheduling formulas (CT, TAT, WT), aging algorithms, and mutex synchronization.
+16. [**Scheduler Design & Implementation**](docs/SCHEDULER_DESIGN.md) — Priority comparison logic, tie-breaking rules, emergency override, and worked scheduling examples.
+17. [**Runway Resource Allocation**](docs/RESOURCE_ALLOCATION.md) — Runway compatibility matrix, dual-layer state management, and critical section protection.
+18. [**DBMS Design & Relational Modeling**](docs/DBMS_DESIGN.md) — Relational algebra, 1NF/2NF/3NF normalization analysis, indexing strategy, and row locking.
+19. [**Database Schema Specification**](docs/DATABASE_SCHEMA.md) — Complete 8-table relational dictionary with data types, keys, and foreign constraints.
+20. [**Transactions & ACID Verification**](docs/TRANSACTION_AND_ACID.md) — Multi-statement atomic transactions, failure injection tests, and durability verification.
+21. [**Module Design Specification**](docs/MODULE_DESIGN.md) — Architectural specifications for all 6 functional subsystems.
+22. [**GUI & Presentation Layer**](docs/GUI_DOCUMENTATION.md) — Screen catalog, widgets, visual indicators, and live window capture instructions.
+23. [**Testing & Quality Assurance Report**](docs/TESTING_REPORT.md) — Test environment, 19 CTest test suites summary, and Day 25 defect resolutions.
+24. [**Security & Integrity Considerations**](docs/SECURITY_CONSIDERATIONS.md) — SHA-256 hashing, SQL injection defense, credential isolation, and audit trails.
 
 ---
 
