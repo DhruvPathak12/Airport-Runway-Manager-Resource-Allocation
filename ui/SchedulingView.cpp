@@ -983,7 +983,7 @@ void SchedulingView::onClockTick()
         // When burst time reaches 0, automatically complete process and free the CPU
         if (remainingSec <= 0) {
             QString compErr;
-            m_service->completeRunningProcess(now, nullptr, &compErr);
+            m_service->completeRunningProcess(QDateTime(), nullptr, &compErr);
             m_runningStartedAt = QDateTime();
             refreshView();
         }
@@ -1080,7 +1080,7 @@ void SchedulingView::onCompleteProcessClicked()
 {
     if (!m_service) return;
     QString err;
-    if (!m_service->completeRunningProcess(QDateTime::currentDateTime(), nullptr, &err)) {
+    if (!m_service->completeRunningProcess(QDateTime(), nullptr, &err)) {
         QMessageBox::warning(this, QStringLiteral("Completion Failed"), err);
     } else {
         m_runningStartedAt = QDateTime();

@@ -4658,6 +4658,9 @@ bool ApplicationService::completeRunningProcess(const QDateTime &completedAt,
   QDateTime compTime = completedAt.isValid()
                            ? completedAt
                            : running.arrivalTime.addSecs(running.serviceTime);
+  if (compTime < running.arrivalTime.addSecs(running.serviceTime)) {
+    compTime = running.arrivalTime.addSecs(running.serviceTime);
+  }
   QString metricErr;
   if (!running.calculateMetrics(compTime, &metricErr)) {
     if (outError)
@@ -4716,7 +4719,16 @@ bool ApplicationService::completeRunningProcess(const QDateTime &completedAt,
     *outCompleted = res.process;
   }
 
+  // 4. If this flight holds an active runway assignment, release it automatically!
+  Models::RunwayAssignment activeAssign;
+  if (getActiveAssignmentForFlight(running.flightId, activeAssign)) {
+    QString relErr;
+    releaseRunwayResource(activeAssign.runwayId, &relErr);
+  }
+
   emit processesChanged();
+  emit runwaysChanged();
+  emit flightsChanged();
   return true;
 }
 

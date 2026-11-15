@@ -208,8 +208,11 @@ Scheduler::CompletionResult Scheduler::completeProcess(Models::Process process, 
         return res;
     }
 
-    // 3. Determine completion timestamp: if invalid, default to arrivalTime + serviceTime
+    // 3. Determine completion timestamp: if invalid or too early, default to arrivalTime + serviceTime
     QDateTime compTime = completedAt.isValid() ? completedAt : process.arrivalTime.addSecs(process.serviceTime);
+    if (compTime < process.arrivalTime.addSecs(process.serviceTime)) {
+        compTime = process.arrivalTime.addSecs(process.serviceTime);
+    }
 
     // 4. Calculate metrics (CT, TAT, WT)
     QString metricErr;
