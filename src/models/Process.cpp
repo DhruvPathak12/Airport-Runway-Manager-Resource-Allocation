@@ -230,7 +230,11 @@ int Process::calculateAgingLevels(const QDateTime &now, int intervalSeconds) con
     if (sec <= 0) {
         return 0;
     }
-    return static_cast<int>(sec / intervalSeconds);
+    qint64 levels = sec / intervalSeconds;
+    if (levels > 255) {
+        levels = 255;
+    }
+    return static_cast<int>(levels);
 }
 
 int Process::calculateEffectivePriority(const QDateTime &now, int intervalSeconds) const

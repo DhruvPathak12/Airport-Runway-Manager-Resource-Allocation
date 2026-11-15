@@ -1278,8 +1278,66 @@ All 6 CTest suites pass 100%:
 
 ---
 
+## DAY 25 — Complete Testing and Bug Fixing ✅ COMPLETE
+
+### Files Modified
+- `sql/migration_day17_aging.sql` (updated — removed invalid `IF NOT EXISTS` for MySQL 8.0 DDL compatibility)
+- `src/models/Process.cpp` (updated — bounded `calculateAgingLevels` to 255 to prevent `TINYINT UNSIGNED` overflow on distant timestamps)
+- `src/services/ApplicationService.cpp` (updated — added `hasProcessForFlight` check in `dispatchNextProcess` and `completeRunningProcess` so in-memory testing processes complete gracefully when absent from MySQL table)
+- `tests/TestACIDProperties.cpp` (updated — corrected flight fixture column name from `emergency_status` to `is_emergency`)
+- `tests/TestDatabaseTransactions.cpp` (updated — corrected flight fixture column name from `emergency_status` to `is_emergency`)
+- `PROJECT_STATUS.md` (updated — documented Day 25 testing, defect discovery, and hardening results)
+
+### Defects Discovered and Resolved
+1. **Defect 1: Migration DDL Syntax Error on MySQL 8.0**
+   - *Symptom:* `migration_day17_aging.sql` threw MySQL syntax error on `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+   - *Root Cause:* MySQL 8.0 does not support `IF NOT EXISTS` for `ADD COLUMN` (only supported in MariaDB).
+   - *Fix:* Removed `IF NOT EXISTS`, applied DDL to local MySQL 8.0 `smartatc` database, adding `ready_since` and `aging_level`.
+2. **Defect 2: Integer Range Overflow in `aging_level` Column**
+   - *Symptom:* `TestPriorityAging` failed with MySQL warning `"Out of range value for column 'aging_level' at row 1"`.
+   - *Root Cause:* For flight records with distant arrival timestamps (e.g. historical seed data), `calculateAgingLevels` returned values exceeding the 255 limit of MySQL `TINYINT UNSIGNED`.
+   - *Fix:* Added clamping `if (levels > 255) levels = 255;` in `Process::calculateAgingLevels`.
+3. **Defect 3: Invalid Column Name in Transaction Test Fixtures**
+   - *Symptom:* `TestDatabaseTransactions` and `TestACIDProperties` failed with `m_testFlightId1 == 0` during fixture generation, cascading into transaction failures and InnoDB lock wait timeouts.
+   - *Root Cause:* Fixture SQL used obsolete column name `emergency_status` instead of the normalized `is_emergency` defined in schema.
+   - *Fix:* Replaced `emergency_status` with `is_emergency` in both test suites.
+4. **Defect 4: In-Memory Process Dispatch Rejection when MySQL Connected**
+   - *Symptom:* `TestCompleteIntegration::testScenario10_RoleBasedAccessRestrictions` failed with `dispOk == false`.
+   - *Root Cause:* `ApplicationService::dispatchNextProcess` attempted an unconditional `UPDATE scheduling_queue ...` when DB was open; since the test process was purely in-memory, `numRowsAffected == 0` was treated as an error.
+   - *Fix:* Guarded database update with `hasProcessForFlight(candidate.flightId)` so purely in-memory test processes are dispatched without erroneous SQL failure, while persistent processes continue to update the database state.
+
+### Automated Regression Results (19 / 19 Test Suites Passed 100%)
+- **Sandboxed (Offline / Disconnected Fallback Mode):** 19 of 19 passed (0.77s)
+- **Unsandboxed (Live MySQL 8.0.46 Database Integration):** 19 of 19 passed (14.62s)
+  1. `TestDatabaseConnectivity`: Passed (16/16 checks)
+  2. `TestAuthAndRBAC`: Passed (24/24 checks)
+  3. `TestFlightManagement`: Passed (22/22 checks)
+  4. `TestAircraftManagement`: Passed (18/18 checks)
+  5. `TestProcessModel`: Passed (19/19 checks)
+  6. `TestReadyQueueAndProcessStates`: Passed (17/17 checks)
+  7. `TestPriorityScheduler`: Passed (20/20 checks)
+  8. `TestSchedulingMetrics`: Passed (14/14 checks)
+  9. `TestRunwayManagement`: Passed (21/21 checks)
+  10. `TestRunwayResourceAllocation`: Passed (18/18 checks)
+  11. `TestDynamicEmergencyPriority`: Passed (22/22 checks)
+  12. `TestPriorityAging`: Passed (35/35 checks)
+  13. `TestStarvationSimulation`: Passed (12/12 checks)
+  14. `TestCriticalSectionAndMutualExclusion`: Passed (18/18 checks)
+  15. `TestConcurrentRunwayAllocation`: Passed (15/15 checks)
+  16. `TestDatabaseTransactions`: Passed (16/16 checks)
+  17. `TestACIDProperties`: Passed (31/31 checks)
+  18. `TestCompleteIntegration`: Passed (16/16 checks)
+  19. `TestDashboardMonitoring`: Passed (16/16 checks)
+
+### Scope Boundaries Confirmed (What was NOT implemented)
+- No Day 26 final documentation preparation or capstone wrapping.
+- No Day 27 final live presentation execution.
+- No Day 28 repository archive operations.
+
+---
+
 ## CURRENT MILESTONE
-Phase 2 / Day 24 — System Dashboard and Operational Monitoring — COMPLETE & VERIFIED
+Phase 2 / Day 25 — Complete Testing and Bug Fixing — COMPLETE & VERIFIED
 
 ## NEXT MILESTONE (PENDING EXPLICIT USER APPROVAL)
-Phase 2 / Day 25 — Final Polish, Documentation Wrapping, and Phase 2 Sign-Off
+Phase 2 / Day 26 — Final Project Documentation and Wrap-up

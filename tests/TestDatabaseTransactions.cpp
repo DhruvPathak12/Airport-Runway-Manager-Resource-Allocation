@@ -126,7 +126,7 @@ void TestDatabaseTransactions::init()
     {
         QSqlQuery q(db);
         q.prepare(QStringLiteral(
-            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, emergency_status) "
+            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, is_emergency) "
             "VALUES ('TX-T101', 'Air India', 'Arrival', 'Scheduled', NOW(), 0);"
         ));
         if (q.exec()) {
@@ -138,7 +138,7 @@ void TestDatabaseTransactions::init()
     {
         QSqlQuery q(db);
         q.prepare(QStringLiteral(
-            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, emergency_status) "
+            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, is_emergency) "
             "VALUES ('TX-T102', 'IndiGo', 'Departure', 'Scheduled', NOW(), 0);"
         ));
         if (q.exec()) {
@@ -150,7 +150,7 @@ void TestDatabaseTransactions::init()
     {
         QSqlQuery q(db);
         q.prepare(QStringLiteral(
-            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, emergency_status) "
+            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, is_emergency) "
             "VALUES ('TX-T103', 'SpiceJet', 'Arrival', 'Landed', NOW(), 0);"
         ));
         if (q.exec()) {

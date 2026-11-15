@@ -150,7 +150,7 @@ void TestACIDProperties::init()
     {
         QSqlQuery q(db);
         q.prepare(QStringLiteral(
-            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, emergency_status) "
+            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, is_emergency) "
             "VALUES ('ACID-101', 'Air India', 'Arrival', 'Scheduled', NOW(), 0);"
         ));
         if (q.exec()) {
@@ -162,7 +162,7 @@ void TestACIDProperties::init()
     {
         QSqlQuery q(db);
         q.prepare(QStringLiteral(
-            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, emergency_status) "
+            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, is_emergency) "
             "VALUES ('ACID-102', 'IndiGo', 'Departure', 'Scheduled', NOW(), 0);"
         ));
         if (q.exec()) {
@@ -174,7 +174,7 @@ void TestACIDProperties::init()
     {
         QSqlQuery q(db);
         q.prepare(QStringLiteral(
-            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, emergency_status) "
+            "INSERT INTO flights (flight_number, airline, flight_type, operational_status, scheduled_time, is_emergency) "
             "VALUES ('ACID-103', 'SpiceJet', 'Arrival', 'Landed', NOW(), 0);"
         ));
         if (q.exec()) {

@@ -7,15 +7,15 @@
 
 USE smartatc;
 
--- 1. Add ready_since column if not present
+-- 1. Add ready_since column
 ALTER TABLE scheduling_queue
-    ADD COLUMN IF NOT EXISTS ready_since DATETIME NULL DEFAULT NULL
+    ADD COLUMN ready_since DATETIME NULL DEFAULT NULL
         COMMENT 'Timestamp when process entered continuous READY waiting period'
         AFTER arrival_time;
 
--- 2. Add aging_level column if not present
+-- 2. Add aging_level column
 ALTER TABLE scheduling_queue
-    ADD COLUMN IF NOT EXISTS aging_level TINYINT UNSIGNED NOT NULL DEFAULT 0
+    ADD COLUMN aging_level TINYINT UNSIGNED NOT NULL DEFAULT 0
         COMMENT 'Number of completed aging intervals accrued in READY state'
         AFTER effective_priority;
 

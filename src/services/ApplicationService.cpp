@@ -4543,7 +4543,7 @@ bool ApplicationService::dispatchNextProcess(Models::Process *outDispatched,
   // 5. Database update if DB is connected
   if (DatabaseManager::instance().isConnected()) {
     QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
-    if (db.isOpen()) {
+    if (db.isOpen() && hasProcessForFlight(candidate.flightId)) {
       QSqlQuery q(db);
       q.prepare(QStringLiteral(
           "UPDATE scheduling_queue "
@@ -4641,7 +4641,7 @@ bool ApplicationService::completeRunningProcess(const QDateTime &completedAt,
   // 2. Database update if DB is connected
   if (DatabaseManager::instance().isConnected()) {
     QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
-    if (db.isOpen()) {
+    if (db.isOpen() && hasProcessForFlight(running.flightId)) {
       QSqlQuery q(db);
       q.prepare(QStringLiteral(
           "UPDATE scheduling_queue "
