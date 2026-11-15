@@ -176,7 +176,7 @@ QWidget* SchedulingView::createLiveTab()
     connect(m_stopAgingButton, &QPushButton::clicked, this, &SchedulingView::onStopAgingClicked);
     toolbarLayout->addWidget(m_stopAgingButton);
 
-    m_evalAgingButton = new QPushButton(QStringLiteral("⚡ Evaluate Aging Now"), tab);
+    m_evalAgingButton = new QPushButton(QStringLiteral("⚡ Step Aging"), tab);
     m_evalAgingButton->setStyleSheet(R"(
         QPushButton {
             background-color: #0284c7;
@@ -194,31 +194,18 @@ QWidget* SchedulingView::createLiveTab()
     toolbarLayout->addWidget(m_evalAgingButton);
 
     m_dispatchButton = new QPushButton(QStringLiteral("🚀 Dispatch Next Process"), tab);
-    m_dispatchButton->setStyleSheet(R"(
-        QPushButton {
-            background-color: #4f46e5;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 6px 14px;
-            font-weight: 600;
-            font-size: 13px;
-        }
-        QPushButton:hover { background-color: #4338ca; }
-        QPushButton:disabled { background-color: #94a3b8; color: #f1f5f9; }
-    )");
+    m_dispatchButton->setVisible(false);
     connect(m_dispatchButton, &QPushButton::clicked, this, &SchedulingView::onDispatchClicked);
-    toolbarLayout->addWidget(m_dispatchButton);
 
-    m_scheduleAllocateButton = new QPushButton(QStringLiteral("🛫 Schedule & Allocate Runway"), tab);
+    m_scheduleAllocateButton = new QPushButton(QStringLiteral("🛫 Auto-Schedule Runway"), tab);
     m_scheduleAllocateButton->setStyleSheet(R"(
         QPushButton {
             background-color: #059669;
             color: white;
             border: none;
             border-radius: 6px;
-            padding: 6px 14px;
-            font-weight: 600;
+            padding: 6px 16px;
+            font-weight: 700;
             font-size: 13px;
         }
         QPushButton:hover { background-color: #047857; }
@@ -789,12 +776,26 @@ void SchedulingView::updateStatusBanner()
         )");
     }
 
-    if (m_service->scheduler() && m_service->scheduler()->hasRunningProcess()) {
+    bool isRunning = (m_service->scheduler() && m_service->scheduler()->hasRunningProcess());
+    bool canManage = m_service->currentSession().hasPermission(QStringLiteral("action:ManageScheduling")) ||
+                     m_service->currentSession().isAdmin();
+
+    if (isRunning) {
         Models::Process runningProc = m_service->scheduler()->runningProcess();
-        m_runningBanner->setText(QStringLiteral("CPU / Runway Dispatcher: RUNNING (Flight %1 [%2], Priority %3)")
+        QString runwayInfo;
+        Models::RunwayAssignment activeAssign;
+        if (m_service->getActiveAssignmentForFlight(runningProc.flightId, activeAssign)) {
+            Models::Runway rw;
+            if (m_service->getRunwayById(activeAssign.runwayId, rw)) {
+                runwayInfo = QStringLiteral(" on Runway %1").arg(rw.runwayNumber);
+            }
+        }
+
+        m_runningBanner->setText(QStringLiteral("CPU / Runway Dispatcher: RUNNING (Flight %1 [%2], Priority %3%4)")
                                      .arg(runningProc.flightNumber.isEmpty() ? QString::number(runningProc.flightId) : runningProc.flightNumber)
                                      .arg(runningProc.airline.isEmpty() ? QStringLiteral("Airline") : runningProc.airline)
-                                     .arg(runningProc.effectivePriority));
+                                     .arg(runningProc.effectivePriority)
+                                     .arg(runwayInfo));
         m_runningBanner->setStyleSheet(R"(
             QLabel {
                 background-color: #dbeafe;
@@ -807,10 +808,11 @@ void SchedulingView::updateStatusBanner()
             }
         )");
         if (m_completeProcessButton) {
-            bool canManage = m_service->currentSession().hasPermission(QStringLiteral("action:ManageScheduling")) ||
-                             m_service->currentSession().isAdmin();
             m_completeProcessButton->setVisible(true);
             m_completeProcessButton->setEnabled(canManage);
+        }
+        if (m_scheduleAllocateButton) {
+            m_scheduleAllocateButton->setEnabled(false);
         }
     } else {
         m_runningBanner->setText(QStringLiteral("CPU / Runway Dispatcher: IDLE (No process running)"));
@@ -828,6 +830,9 @@ void SchedulingView::updateStatusBanner()
         if (m_completeProcessButton) {
             m_completeProcessButton->setVisible(false);
         }
+        if (m_scheduleAllocateButton) {
+            m_scheduleAllocateButton->setEnabled(canManage);
+        }
         m_runningStartedAt = QDateTime();
     }
 }
@@ -842,6 +847,18 @@ void SchedulingView::refreshView()
     if (m_service->readyQueue()) {
         queueProcs = m_service->readyQueue()->allProcesses();
     }
+
+    // Always sort Ready Queue by Priority for user visibility:
+    // Highest priority (Priority 1 = Emergency) at top, then earlier arrival, then flightId
+    std::sort(queueProcs.begin(), queueProcs.end(), [](const Models::Process &a, const Models::Process &b) {
+        if (a.effectivePriority != b.effectivePriority) {
+            return a.effectivePriority < b.effectivePriority;
+        }
+        if (a.arrivalTime.isValid() && b.arrivalTime.isValid() && a.arrivalTime != b.arrivalTime) {
+            return a.arrivalTime < b.arrivalTime;
+        }
+        return a.flightId < b.flightId;
+    });
 
     m_cachedProcesses = queueProcs;
     renderProcessesTable(m_cachedProcesses);
@@ -967,11 +984,21 @@ void SchedulingView::onClockTick()
         int totalBurst = (runningProc.serviceTime > 0) ? runningProc.serviceTime : 60;
         int remainingSec = std::max<int>(0, totalBurst - static_cast<int>(elapsedSec));
 
+        QString runwayInfo;
+        Models::RunwayAssignment activeAssign;
+        if (m_service->getActiveAssignmentForFlight(runningProc.flightId, activeAssign)) {
+            Models::Runway rw;
+            if (m_service->getRunwayById(activeAssign.runwayId, rw)) {
+                runwayInfo = QStringLiteral(" on Runway %1").arg(rw.runwayNumber);
+            }
+        }
+
         if (m_runningBanner) {
-            m_runningBanner->setText(QStringLiteral("CPU / Runway Dispatcher: RUNNING (Flight %1 [%2], Priority %3) — ⏱ Burst Execution: %4s remaining")
+            m_runningBanner->setText(QStringLiteral("CPU / Runway Dispatcher: RUNNING (Flight %1 [%2], Priority %3%4) — ⏱ Burst Execution: %5s remaining")
                                          .arg(runningProc.flightNumber.isEmpty() ? QString::number(runningProc.flightId) : runningProc.flightNumber)
                                          .arg(runningProc.airline.isEmpty() ? QStringLiteral("Airline") : runningProc.airline)
                                          .arg(runningProc.effectivePriority)
+                                         .arg(runwayInfo)
                                          .arg(remainingSec));
         }
 
@@ -1043,15 +1070,7 @@ void SchedulingView::onEvaluateAgingClicked()
 
 void SchedulingView::onDispatchClicked()
 {
-    if (!m_service) return;
-    Models::Process dispatched;
-    QString err;
-    if (!m_service->dispatchNextProcess(&dispatched, &err)) {
-        QMessageBox::information(this, QStringLiteral("Dispatch Info"), err);
-    } else {
-        m_runningStartedAt = QDateTime::currentDateTime();
-        refreshView();
-    }
+    onScheduleAndAllocateClicked();
 }
 
 void SchedulingView::onScheduleAndAllocateClicked()

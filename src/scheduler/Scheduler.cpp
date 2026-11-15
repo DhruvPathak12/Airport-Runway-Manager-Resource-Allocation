@@ -190,12 +190,18 @@ Scheduler::CompletionResult Scheduler::completeProcess(Models::Process process, 
     CompletionResult res;
 
     // 1. Prevent duplicate completion records
-    for (const auto &cp : m_completedProcesses) {
-        if (cp.flightId == process.flightId) {
-            res.success = false;
-            res.reason = QStringLiteral("Process for flight %1 has already been completed.").arg(process.flightId);
-            emit schedulerError(res.reason);
-            return res;
+    for (int i = 0; i < m_completedProcesses.size(); ++i) {
+        if (m_completedProcesses.at(i).flightId == process.flightId) {
+            if (process.state == Models::ProcessState::Completed) {
+                res.success = false;
+                res.reason = QStringLiteral("Process for flight %1 has already been completed.").arg(process.flightId);
+                emit schedulerError(res.reason);
+                return res;
+            } else {
+                // Remove stale record from earlier cycle to allow fresh completion
+                m_completedProcesses.removeAt(i);
+                break;
+            }
         }
     }
 

@@ -1238,6 +1238,14 @@ bool ApplicationService::releaseRunwayResource(int runwayId,
         "WHERE flight_id = :fid AND process_state = 'Running';"));
     compQ.bindValue(QStringLiteral(":fid"), assignedFlightId);
     compQ.exec();
+
+    // Advance flight operational_status from Cleared to Landed (Arrival) or Departed (Departure)
+    QSqlQuery updateFlightStatus(db);
+    updateFlightStatus.prepare(QStringLiteral(
+        "UPDATE flights SET operational_status = (CASE WHEN flight_type = 'Arrival' THEN 'Landed' ELSE 'Departed' END) "
+        "WHERE flight_id = :fid AND operational_status NOT IN ('Landed', 'Departed', 'Cancelled');"));
+    updateFlightStatus.bindValue(QStringLiteral(":fid"), assignedFlightId);
+    updateFlightStatus.exec();
   }
 
   // Explicitly release critical section mutex before notifying UI observers
@@ -2515,7 +2523,15 @@ bool ApplicationService::createFlight(const Models::Flight &flight,
     return false;
   }
 
+  int newFlightId = query.lastInsertId().toInt();
+  if (flight.operationalStatus.compare(QStringLiteral("Scheduled"), Qt::CaseInsensitive) == 0 ||
+      flight.operationalStatus.compare(QStringLiteral("Taxiing"), Qt::CaseInsensitive) == 0) {
+    QString procErr;
+    createProcessForFlight(newFlightId, 60, nullptr, &procErr);
+  }
+
   emit flightsChanged();
+  emit processesChanged();
   return true;
 }
 
@@ -2654,6 +2670,12 @@ bool ApplicationService::updateFlight(const Models::Flight &flight,
     if (qp) {
       qp->basePriority = flight.priority;
       qp->setEmergency(flight.isEmergency);
+      m_scheduler->readyQueue().reorder();
+    } else if (flight.operationalStatus.compare(QStringLiteral("Scheduled"), Qt::CaseInsensitive) == 0 ||
+               flight.operationalStatus.compare(QStringLiteral("Taxiing"), Qt::CaseInsensitive) == 0) {
+      QString pErr;
+      createProcessForFlight(flight.id, 60, nullptr, &pErr);
+      m_scheduler->readyQueue().reorder();
     }
     if (m_scheduler->hasRunningProcess() &&
         m_scheduler->runningProcess().flightId == flight.id) {
@@ -2967,6 +2989,11 @@ bool ApplicationService::setFlightEmergency(int flightId, bool emergency,
         m_scheduler->readyQueue().findByFlightId(flightId);
     if (queuedProc) {
       queuedProc->setEmergency(emergency);
+      m_scheduler->readyQueue().reorder();
+    } else {
+      QString pErr;
+      synchronizeFlightProcess(flightId, 60, &pErr);
+      m_scheduler->readyQueue().reorder();
     }
 
     // If the process is currently RUNNING, update its effective priority
@@ -4510,6 +4537,27 @@ bool ApplicationService::syncReadyQueueFromDatabase(QString *outError) {
     m_scheduler->readyQueue().enqueue(proc);
   }
 
+  m_scheduler->readyQueue().reorder();
+
+  // If the ready queue is empty, automatically enroll any active Scheduled/Taxiing flights
+  if (m_scheduler->readyQueue().isEmpty()) {
+    QSqlQuery fQuery(db);
+    fQuery.prepare(QStringLiteral(
+        "SELECT flight_id FROM flights "
+        "WHERE operational_status IN ('Scheduled', 'Taxiing') "
+        "ORDER BY priority ASC, flight_id ASC;"));
+    if (fQuery.exec()) {
+      while (fQuery.next()) {
+        int fid = fQuery.value(0).toInt();
+        if (!hasProcessForFlight(fid)) {
+          QString pErr;
+          createProcessForFlight(fid, 60, nullptr, &pErr);
+        }
+      }
+      m_scheduler->readyQueue().reorder();
+    }
+  }
+
   return true;
 }
 
@@ -5254,6 +5302,15 @@ ApplicationService::ScheduleAndAllocateResult ApplicationService::scheduleAndAll
 
   if (!m_scheduler) {
     result.message = QStringLiteral("Scheduler service is not initialized.");
+    if (outError) *outError = result.message;
+    return result;
+  }
+
+  if (m_scheduler->hasRunningProcess()) {
+    Models::Process running = m_scheduler->runningProcess();
+    result.success = false;
+    result.message = QStringLiteral("Dispatcher in progress: Flight %1 is currently executing. Wait for burst execution to finish or click 'Complete Burst'.")
+                         .arg(running.flightNumber.isEmpty() ? QString::number(running.flightId) : running.flightNumber);
     if (outError) *outError = result.message;
     return result;
   }
