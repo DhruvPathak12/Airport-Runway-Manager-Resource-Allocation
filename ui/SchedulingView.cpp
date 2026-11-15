@@ -264,6 +264,7 @@ QWidget* SchedulingView::createLiveTab()
     layout->addWidget(m_permNotice);
 
     // ── Running Process Banner ───────────────────────────────────────────────
+    QHBoxLayout *runningLayout = new QHBoxLayout;
     m_runningBanner = new QLabel(QStringLiteral("CPU / Runway Dispatcher: IDLE (No process running)"), tab);
     m_runningBanner->setWordWrap(true);
     m_runningBanner->setStyleSheet(R"(
@@ -277,7 +278,27 @@ QWidget* SchedulingView::createLiveTab()
             color: #1e293b;
         }
     )");
-    layout->addWidget(m_runningBanner);
+    runningLayout->addWidget(m_runningBanner, 1);
+
+    m_completeProcessButton = new QPushButton(QStringLiteral("🏁 Complete Execution / Free CPU"), tab);
+    m_completeProcessButton->setStyleSheet(R"(
+        QPushButton {
+            background-color: #d97706;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        QPushButton:hover { background-color: #b45309; }
+        QPushButton:disabled { background-color: #cbd5e1; color: #94a3b8; }
+    )");
+    m_completeProcessButton->setVisible(false);
+    connect(m_completeProcessButton, &QPushButton::clicked, this, &SchedulingView::onCompleteProcessClicked);
+    runningLayout->addWidget(m_completeProcessButton);
+
+    layout->addLayout(runningLayout);
 
     // ── Processes Table ──────────────────────────────────────────────────────
     m_tableWidget = new QTableWidget(tab);
@@ -785,6 +806,12 @@ void SchedulingView::updateStatusBanner()
                 color: #1e40af;
             }
         )");
+        if (m_completeProcessButton) {
+            bool canManage = m_service->currentSession().hasPermission(QStringLiteral("action:ManageScheduling")) ||
+                             m_service->currentSession().isAdmin();
+            m_completeProcessButton->setVisible(true);
+            m_completeProcessButton->setEnabled(canManage);
+        }
     } else {
         m_runningBanner->setText(QStringLiteral("CPU / Runway Dispatcher: IDLE (No process running)"));
         m_runningBanner->setStyleSheet(R"(
@@ -798,6 +825,10 @@ void SchedulingView::updateStatusBanner()
                 color: #475569;
             }
         )");
+        if (m_completeProcessButton) {
+            m_completeProcessButton->setVisible(false);
+        }
+        m_runningStartedAt = QDateTime();
     }
 }
 
@@ -912,6 +943,8 @@ void SchedulingView::renderProcessesTable(const QList<Models::Process> &processe
 void SchedulingView::onClockTick()
 {
     QDateTime now = QDateTime::currentDateTime();
+
+    // 1. Live Continuous Wait update in Ready Queue
     for (int row = 0; row < m_cachedProcesses.size() && row < m_tableWidget->rowCount(); ++row) {
         const Models::Process &p = m_cachedProcesses.at(row);
         int waitSec = p.readyWaitingDurationSeconds(now);
@@ -920,6 +953,43 @@ void SchedulingView::onClockTick()
         QTableWidgetItem *item = m_tableWidget->item(row, 7);
         if (item) {
             item->setText(waitText);
+        }
+    }
+
+    // 2. Live Burst Execution countdown & Automatic Completion
+    if (m_service && m_service->scheduler() && m_service->scheduler()->hasRunningProcess()) {
+        Models::Process runningProc = m_service->scheduler()->runningProcess();
+        if (!m_runningStartedAt.isValid()) {
+            m_runningStartedAt = now;
+        }
+
+        qint64 elapsedSec = m_runningStartedAt.secsTo(now);
+        int totalBurst = (runningProc.serviceTime > 0) ? runningProc.serviceTime : 60;
+        int remainingSec = std::max<int>(0, totalBurst - static_cast<int>(elapsedSec));
+
+        if (m_runningBanner) {
+            m_runningBanner->setText(QStringLiteral("CPU / Runway Dispatcher: RUNNING (Flight %1 [%2], Priority %3) — ⏱ Burst Execution: %4s remaining")
+                                         .arg(runningProc.flightNumber.isEmpty() ? QString::number(runningProc.flightId) : runningProc.flightNumber)
+                                         .arg(runningProc.airline.isEmpty() ? QStringLiteral("Airline") : runningProc.airline)
+                                         .arg(runningProc.effectivePriority)
+                                         .arg(remainingSec));
+        }
+
+        if (m_completeProcessButton) {
+            m_completeProcessButton->setVisible(true);
+            m_completeProcessButton->setEnabled(true);
+        }
+
+        // When burst time reaches 0, automatically complete process and free the CPU
+        if (remainingSec == 0) {
+            QString compErr;
+            m_service->completeRunningProcess(now, nullptr, &compErr);
+            m_runningStartedAt = QDateTime();
+            refreshView();
+        }
+    } else {
+        if (m_completeProcessButton) {
+            m_completeProcessButton->setVisible(false);
         }
     }
 }
@@ -979,6 +1049,7 @@ void SchedulingView::onDispatchClicked()
     if (!m_service->dispatchNextProcess(&dispatched, &err)) {
         QMessageBox::information(this, QStringLiteral("Dispatch Info"), err);
     } else {
+        m_runningStartedAt = QDateTime::currentDateTime();
         refreshView();
     }
 }
@@ -989,6 +1060,7 @@ void SchedulingView::onScheduleAndAllocateClicked()
     QString err;
     ApplicationService::ScheduleAndAllocateResult res = m_service->scheduleAndAllocateNext(&err);
     if (res.success) {
+        m_runningStartedAt = QDateTime::currentDateTime();
         QMessageBox::information(
             this,
             QStringLiteral("Schedule & Runway Allocation"),
@@ -1002,6 +1074,20 @@ void SchedulingView::onScheduleAndAllocateClicked()
         );
     }
     refreshView();
+}
+
+void SchedulingView::onCompleteProcessClicked()
+{
+    if (!m_service) return;
+    QString err;
+    if (!m_service->completeRunningProcess(QDateTime::currentDateTime(), nullptr, &err)) {
+        QMessageBox::warning(this, QStringLiteral("Completion Failed"), err);
+    } else {
+        m_runningStartedAt = QDateTime();
+        refreshView();
+        QMessageBox::information(this, QStringLiteral("Process Completed"),
+                                 QStringLiteral("Process completed successfully. CPU / Runway Dispatcher is now IDLE."));
+    }
 }
 
 // ── Starvation Demonstration Implementation (Day 18) ─────────────────────────

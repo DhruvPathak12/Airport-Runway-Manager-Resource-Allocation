@@ -761,6 +761,10 @@ void RunwaysView::updatePermissions()
 
 void RunwaysView::refreshRunways()
 {
+    if (m_service && m_service->resourceManager()) {
+        m_service->resourceManager()->syncFromDatabase();
+    }
+
     if (!m_service || !m_service->isAuthenticated()) {
         m_currentRunways.clear();
         m_tableWidget->setRowCount(0);

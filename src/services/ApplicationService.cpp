@@ -1226,6 +1226,20 @@ bool ApplicationService::releaseRunwayResource(int runwayId,
     m_resourceManager->releaseRunwayUnlocked(runwayId);
   }
 
+  // Complete associated flight process in scheduler and database if active
+  if (assignedFlightId > 0) {
+    if (m_scheduler && m_scheduler->hasRunningProcess() &&
+        m_scheduler->runningProcess().flightId == assignedFlightId) {
+      m_scheduler->completeRunningProcess(QDateTime::currentDateTime());
+    }
+    QSqlQuery compQ(db);
+    compQ.prepare(QStringLiteral(
+        "UPDATE scheduling_queue SET process_state = 'Completed', completion_time = NOW() "
+        "WHERE flight_id = :fid AND process_state = 'Running';"));
+    compQ.bindValue(QStringLiteral(":fid"), assignedFlightId);
+    compQ.exec();
+  }
+
   // Explicitly release critical section mutex before notifying UI observers
   csLock.reset();
 
@@ -4435,10 +4449,10 @@ bool ApplicationService::syncReadyQueueFromDatabase(QString *outError) {
 
   QSqlQuery query(db);
   query.prepare(QStringLiteral(
-      "SELECT q.queue_id, q.flight_id, q.arrival_time, q.base_priority, "
-      "q.effective_priority, "
+      "SELECT q.queue_id, q.flight_id, q.arrival_time, q.ready_since, q.base_priority, "
+      "       q.effective_priority, q.aging_level, "
       "       q.service_time, q.waiting_time, q.turnaround_time, "
-      "q.completion_time, q.process_state, "
+      "       q.completion_time, q.process_state, "
       "       f.flight_number, f.airline, f.operational_status, f.is_emergency "
       "FROM scheduling_queue q "
       "LEFT JOIN flights f ON q.flight_id = f.flight_id "
@@ -4462,10 +4476,17 @@ bool ApplicationService::syncReadyQueueFromDatabase(QString *outError) {
     proc.setQueueId(query.value(QStringLiteral("queue_id")).toInt());
     proc.flightId = query.value(QStringLiteral("flight_id")).toInt();
     proc.arrivalTime = query.value(QStringLiteral("arrival_time")).toDateTime();
-    proc.readySince = proc.arrivalTime;
+    QDateTime dbReadySince = query.value(QStringLiteral("ready_since")).toDateTime();
+    proc.readySince = (dbReadySince.isValid() && dbReadySince <= QDateTime::currentDateTime())
+                          ? dbReadySince
+                          : proc.arrivalTime;
+    if (!proc.readySince.isValid() || proc.readySince > QDateTime::currentDateTime()) {
+      proc.readySince = QDateTime::currentDateTime();
+    }
     proc.basePriority = query.value(QStringLiteral("base_priority")).toInt();
     proc.effectivePriority =
         query.value(QStringLiteral("effective_priority")).toInt();
+    proc.agingLevel = query.value(QStringLiteral("aging_level")).toInt();
     proc.isEmergency = query.value(QStringLiteral("is_emergency")).toBool();
     proc.serviceTime = query.value(QStringLiteral("service_time")).toInt();
     proc.waitingTime =
@@ -4868,9 +4889,11 @@ int ApplicationService::evaluateAging(const QDateTime &evaluationTime,
     }
   }
 
-  if (updated > 0) {
+  if (evaluated > 0) {
     emit processesChanged();
-    emit flightsChanged();
+    if (updated > 0) {
+      emit flightsChanged();
+    }
   }
 
   return evaluated;

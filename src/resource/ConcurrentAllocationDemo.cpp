@@ -67,12 +67,22 @@ ConcurrentAllocationDemo::DemoReport ConcurrentAllocationDemo::execute(int runwa
 
     if (!m_resourceMgr) {
         report.summaryMessage = QStringLiteral("Error: ResourceManager is null.");
-        return report;
+        // Restore live database state to clean up thread simulation memory allocations
+    if (m_resourceMgr) {
+        m_resourceMgr->syncFromDatabase();
+    }
+
+    return report;
     }
 
     if (requests.isEmpty()) {
         report.summaryMessage = QStringLiteral("Warning: No requests provided for concurrency demonstration.");
-        return report;
+        // Restore live database state to clean up thread simulation memory allocations
+    if (m_resourceMgr) {
+        m_resourceMgr->syncFromDatabase();
+    }
+
+    return report;
     }
 
     // Reset synchronization and lifecycle state
@@ -116,7 +126,12 @@ ConcurrentAllocationDemo::DemoReport ConcurrentAllocationDemo::execute(int runwa
         m_workerThreads.clear();
 
         report.summaryMessage = QStringLiteral("Thread creation failure: %1").arg(ex.what());
-        return report;
+        // Restore live database state to clean up thread simulation memory allocations
+    if (m_resourceMgr) {
+        m_resourceMgr->syncFromDatabase();
+    }
+
+    return report;
     }
 
     // 2. Start Barrier Synchronization using Condition Variable
@@ -191,6 +206,11 @@ ConcurrentAllocationDemo::DemoReport ConcurrentAllocationDemo::execute(int runwa
         report.hasDataRace = false;
         report.summaryMessage = QStringLiteral("All %1 requests rejected safely (Runway was unavailable, occupied, or in maintenance).")
                                     .arg(report.totalRequests);
+    }
+
+    // Restore live database state to clean up thread simulation memory allocations
+    if (m_resourceMgr) {
+        m_resourceMgr->syncFromDatabase();
     }
 
     return report;
