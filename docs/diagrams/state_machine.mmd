@@ -1,0 +1,13 @@
+stateDiagram-v2
+    [*] --> READY : Process Created & Enqueued (Flight Scheduled)
+    
+    READY --> RUNNING : Scheduler Dispatches Process (Runway Free & Allocated)
+    READY --> READY : Priority Aging Applied (Increment Effective Priority)
+    READY --> READY : Emergency Declared (Escalate to Priority 5)
+    
+    RUNNING --> BLOCKED : Runway Temporarily Blocked / Weather Hold
+    BLOCKED --> READY : Resource Cleared / Re-enqueued in ReadyQueue
+    
+    RUNNING --> COMPLETED : Flight Finishes Landing/Takeoff (Runway Released & Transaction Committed)
+    
+    COMPLETED --> [*] : Metrics Recorded (Turnaround & Waiting Times Finalized)

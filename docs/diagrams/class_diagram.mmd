@@ -1,0 +1,107 @@
+classDiagram
+    class Process {
+        -int m_processId
+        -int m_flightId
+        -ProcessState m_state
+        -int m_basePriority
+        -int m_effectivePriority
+        -int m_arrivalTime
+        -int m_burstTime
+        -int m_waitingTime
+        -int m_turnaroundTime
+        -int m_completionTime
+        -uint8_t m_agingLevel
+        +getEffectivePriority() int
+        +setEffectivePriority(int) void
+        +incrementAgingLevel() void
+        +transitionState(ProcessState) void
+    }
+
+    class ReadyQueue {
+        -std::vector~Process~ m_queue
+        -mutable std::mutex m_queueMutex
+        +push(Process) void
+        +pop() Process
+        +peek() Process
+        +size() size_t
+        +isEmpty() bool
+        +updatePriorities() void
+    }
+
+    class Scheduler {
+        -ReadyQueue m_readyQueue
+        -std::vector~Process~ m_completedList
+        -int m_currentTime
+        +addProcess(Process) void
+        +scheduleNext() Process
+        +calculateMetrics() SchedulingMetrics
+        +getAverageWaitingTime() double
+        +getAverageTurnaroundTime() double
+    }
+
+    class AgingEngine {
+        -int m_waitThreshold
+        -int m_priorityIncrement
+        -int m_maxPriorityCap
+        -bool m_agingEnabled
+        +applyAging(ReadyQueue&) int
+        +setAgingParameters(int, int, int) void
+        +isAgingEnabled() bool
+    }
+
+    class ResourceManager {
+        -std::map~int, Runway~ m_runways
+        -mutable std::mutex m_resourceMutex
+        +requestRunway(int runwayId, int flightId) bool
+        +releaseRunway(int runwayId) bool
+        +isRunwayFree(int runwayId) bool
+        +getRunwayStatus(int runwayId) RunwayStatus
+    }
+
+    class DatabaseManager {
+        -QSqlDatabase m_db
+        -bool m_isConnected
+        +getInstance() DatabaseManager&
+        +beginTransaction() bool
+        +commitTransaction() bool
+        +rollbackTransaction() bool
+        +isConnected() bool
+    }
+
+    class ApplicationService {
+        -Scheduler m_scheduler
+        -AgingEngine m_agingEngine
+        -ResourceManager m_resourceManager
+        -DatabaseManager& m_dbManager
+        +dispatchNextProcess() bool
+        +allocateRunwayWithTransaction(int, int) bool
+        +releaseRunwayWithTransaction(int) bool
+        +declareFlightEmergency(int) bool
+        +getDashboardMetrics() DashboardStats
+    }
+
+    class Flight {
+        -int m_id
+        -QString m_flightNumber
+        -int m_aircraftId
+        -FlightStatus m_status
+        -bool m_isEmergency
+        -int m_priority
+    }
+
+    class Runway {
+        -int m_id
+        -QString m_name
+        -int m_length
+        -RunwayStatus m_status
+        -int m_currentFlightId
+    }
+
+    ApplicationService o-- Scheduler
+    ApplicationService o-- AgingEngine
+    ApplicationService o-- ResourceManager
+    ApplicationService --> DatabaseManager
+    Scheduler o-- ReadyQueue
+    ReadyQueue *-- Process
+    ResourceManager *-- Runway
+    Process ..> Flight : references

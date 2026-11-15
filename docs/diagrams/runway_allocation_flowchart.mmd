@@ -1,0 +1,38 @@
+flowchart TD
+    Req([Runway Allocation Request: Flight F, Aircraft A]) --> LockRes[Acquire ResourceManager std::mutex]
+    
+    LockRes --> FilterRunways[Query All Runways Registered in Airport]
+    FilterRunways --> LoopRunways{Iterate Each Runway}
+
+    LoopRunways -- Done / None Valid --> UnlockFail[Release std::mutex]
+    UnlockFail --> RejectAlloc([Return: Allocation Failed - No Compatible Runway])
+
+    LoopRunways -- Check Next Runway R --> CheckStatus{Status == FREE?}
+    CheckStatus -- No (OCCUPIED/MAINTENANCE) --> LoopRunways
+    
+    CheckStatus -- Yes --> CheckLength{Length >= Required for Wake Category?}
+    CheckLength -- No --> LoopRunways
+
+    CheckLength -- Yes --> CheckSurface{Surface Compatible with Aircraft?}
+    CheckSurface -- No --> LoopRunways
+
+    CheckSurface -- Yes --> SelectRunway[Select Candidate Runway R]
+    SelectRunway --> AtomicLock[Mark Runway R as RESERVED in Memory]
+    AtomicLock --> OpenTx[Start Database Transaction]
+
+    OpenTx --> DBRowLock[SELECT status FROM runways WHERE id=R.id FOR UPDATE]
+    DBRowLock --> DBStatusCheck{DB Status == 'FREE'?}
+
+    DBStatusCheck -- No --> AbortTx[Rollback Database Transaction]
+    AbortTx --> ResetMem[Revert Runway R to FREE in Memory]
+    ResetMem --> LoopRunways
+
+    DBStatusCheck -- Yes --> ExecStatements[Execute Allocation SQL Sequence:<br/>1. UPDATE flights SET status<br/>2. INSERT INTO runway_assignments<br/>3. UPDATE runways SET status='OCCUPIED'<br/>4. UPDATE scheduling_queue]
+
+    ExecStatements --> CheckSQLOk{All SQL Statements Succeeded?}
+    CheckSQLOk -- No --> AbortTx
+    
+    CheckSQLOk -- Yes --> CommitTx[COMMIT Database Transaction]
+    CommitTx --> FinalizeMem[Mark Runway R as OCCUPIED in Memory]
+    FinalizeMem --> UnlockSuccess[Release std::mutex]
+    UnlockSuccess --> GrantAlloc([Return: Allocation Succeeded])

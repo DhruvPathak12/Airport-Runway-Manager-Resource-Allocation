@@ -1,0 +1,62 @@
+sequenceDiagram
+    autonumber
+    actor ATC as ATC Controller
+    participant GUI as SchedulingView (GUI)
+    participant Svc as ApplicationService
+    participant Aging as AgingEngine
+    participant Sched as Scheduler / ReadyQueue
+    participant Res as ResourceManager (std::mutex)
+    participant DB as DatabaseManager
+    participant MySQL as MySQL 8 (InnoDB)
+
+    ATC->>GUI: Click "Dispatch Next Process"
+    GUI->>Svc: dispatchNextProcess()
+    activate Svc
+
+    Svc->>Aging: applyAging(readyQueue)
+    activate Aging
+    Aging-->>Svc: agingAppliedCount
+    deactivate Aging
+
+    Svc->>Sched: scheduleNext()
+    activate Sched
+    Sched-->>Svc: Candidate Process (e.g., Flight 101, Priority 4)
+    deactivate Sched
+
+    Svc->>Res: findCompatibleRunway(Flight 101)
+    activate Res
+    Res-->>Svc: Runway 1 (RWY-09L) Available
+    deactivate Res
+
+    Svc->>Res: ScopedResourceLock lock(m_resourceMutex)
+    activate Res
+    Note over Res: Critical Section Protected by std::mutex
+
+    Svc->>DB: beginTransaction()
+    activate DB
+    DB->>MySQL: START TRANSACTION
+    MySQL-->>DB: OK
+
+    Svc->>DB: executePessimisticLock(Runway 1)
+    DB->>MySQL: SELECT status FROM runways WHERE id=1 FOR UPDATE
+    MySQL-->>DB: status = 'FREE'
+
+    Svc->>DB: executeAllocationStatements(Flight 101, Runway 1)
+    DB->>MySQL: UPDATE flights SET status='LANDED' WHERE id=101
+    DB->>MySQL: INSERT INTO runway_assignments ...
+    DB->>MySQL: UPDATE runways SET status='OCCUPIED', current_flight_id=101 WHERE id=1
+    DB->>MySQL: UPDATE scheduling_queue SET state='COMPLETED' WHERE flight_id=101
+    MySQL-->>DB: All statements OK
+
+    Svc->>DB: commitTransaction()
+    DB->>MySQL: COMMIT
+    MySQL-->>DB: OK
+    deactivate DB
+
+    Svc->>Res: updateMemoryState(Runway 1, OCCUPIED)
+    deactivate Res
+    Note over Res: Critical Section Exited, Mutex Released
+
+    Svc-->>GUI: Result (Success, Flight Dispatched)
+    deactivate Svc
+    GUI->>ATC: Display Updated Queue & Runway Status

@@ -1,0 +1,56 @@
+flowchart LR
+    Admin["fa:fa-user-shield System Administrator"]
+    ATC["fa:fa-plane-arrival Air Traffic Controller (ATC)"]
+    AirportOps["fa:fa-hard-hat Airport Operator"]
+
+    subgraph User_Management ["User & System Security"]
+        UC_Auth["Authenticate (Login/Logout)"]
+        UC_ManageUsers["Manage Users & Roles"]
+        UC_Audit["View Operation Audit Logs"]
+    end
+
+    subgraph Flight_Operations ["Flight & Aircraft Management"]
+        UC_FlightCRUD["Register & Track Flights"]
+        UC_DeclareEmerg["Declare In-Flight Emergency"]
+        UC_FleetRegistry["Manage Aircraft Fleet Registry"]
+    end
+
+    subgraph OS_Scheduling ["Process Scheduling & OS Simulation"]
+        UC_Dispatch["Dispatch Highest Priority Process"]
+        UC_ConfigureAging["Configure Priority Aging Parameters"]
+        UC_SimStarvation["Execute Starvation Simulation"]
+        UC_ViewMetrics["View TAT, WT, RT Scheduling Metrics"]
+    end
+
+    subgraph Runway_Infrastructure ["Runway & Resource Allocation"]
+        UC_ToggleMaint["Toggle Runway Maintenance Mode"]
+        UC_AllocateRunway["Execute Atomic Runway Allocation"]
+        UC_ReleaseRunway["Release Occupied Runway"]
+        UC_ThreadDemo["Run Multi-threaded Contention Demo"]
+    end
+
+    Admin --> UC_Auth
+    Admin --> UC_ManageUsers
+    Admin --> UC_Audit
+    Admin --> UC_FlightCRUD
+    Admin --> UC_DeclareEmerg
+    Admin --> UC_FleetRegistry
+    Admin --> UC_Dispatch
+    Admin --> UC_ConfigureAging
+    Admin --> UC_SimStarvation
+    Admin --> UC_ToggleMaint
+    Admin --> UC_AllocateRunway
+    Admin --> UC_ThreadDemo
+
+    ATC --> UC_Auth
+    ATC --> UC_FlightCRUD
+    ATC --> UC_DeclareEmerg
+    ATC --> UC_Dispatch
+    ATC --> UC_ViewMetrics
+    ATC --> UC_AllocateRunway
+
+    AirportOps --> UC_Auth
+    AirportOps --> UC_FleetRegistry
+    AirportOps --> UC_ToggleMaint
+    AirportOps --> UC_ReleaseRunway
+    AirportOps --> UC_ThreadDemo

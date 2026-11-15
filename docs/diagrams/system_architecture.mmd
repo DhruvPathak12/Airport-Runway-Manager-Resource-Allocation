@@ -1,0 +1,43 @@
+graph TD
+    subgraph Presentation_Layer ["Presentation Layer (Qt 6 Widgets)"]
+        UI_Login["LoginView"]
+        UI_Main["MainWindow"]
+        UI_Dash["DashboardView"]
+        UI_Flight["FlightsView"]
+        UI_Aircraft["AircraftView"]
+        UI_Runway["RunwaysView"]
+        UI_Sched["SchedulingView"]
+    end
+
+    subgraph Service_Layer ["Application & Orchestration Layer"]
+        AppService["ApplicationService<br/>(Facade, Orchestration, RBAC)"]
+        AuthService["AuthService<br/>(Authentication, Session, SHA-256)"]
+    end
+
+    subgraph Core_OS_Simulation ["Core OS & Concurrency Engine (In-Memory)"]
+        Scheduler["Scheduler<br/>(Non-Preemptive Priority)"]
+        ReadyQueue["ReadyQueue<br/>(Priority-Ordered Queue)"]
+        AgingEngine["AgingEngine<br/>(Starvation Prevention)"]
+        ResourceManager["ResourceManager<br/>(std::mutex, ScopedResourceLock)"]
+        Threads["ConcurrentAllocationDemo<br/>(std::thread Workers)"]
+    end
+
+    subgraph Data_Access_Layer ["Data Access Layer (DAO Pattern)"]
+        DBMgr["DatabaseManager (Connection Pool & Transaction Manager)"]
+        UserDAO["UserDao"]
+        FlightDAO["FlightDao"]
+        AircraftDAO["AircraftDao"]
+        RunwayDAO["RunwayDao"]
+        QueueDAO["SchedulingQueueDao"]
+        AssignDAO["RunwayAssignmentDao"]
+        LogDAO["OperationLogDao"]
+    end
+
+    subgraph Database_Layer ["Storage & Persistence Engine"]
+        MySQL[("MySQL 8.0 Server (InnoDB Engine)<br/>ACID Transactions, Row Locks")]
+    end
+
+    Presentation_Layer --> Service_Layer
+    Service_Layer --> Core_OS_Simulation
+    Service_Layer --> Data_Access_Layer
+    Data_Access_Layer --> Database_Layer

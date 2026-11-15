@@ -1,0 +1,98 @@
+erDiagram
+    roles ||--o{ users : "assigned to"
+    users ||--o{ operation_logs : "performed by"
+    aircraft ||--o{ flights : "operates"
+    flights ||--o{ scheduling_queue : "queued in"
+    flights ||--o{ runway_assignments : "allocated to"
+    runways ||--o{ runway_assignments : "serviced on"
+
+    roles {
+        int id PK
+        string role_name UK "ADMIN, ATC, AIRPORT_OPERATOR"
+        string description
+        datetime created_at
+    }
+
+    users {
+        int id PK
+        string username UK
+        string password_hash "SHA-256 Hash"
+        string full_name
+        string email
+        int role_id FK
+        datetime created_at
+        datetime updated_at
+    }
+
+    aircraft {
+        int id PK
+        string model
+        string registration_number UK
+        int capacity
+        string manufacturer
+        string wake_category "HEAVY, MEDIUM, LIGHT"
+        datetime created_at
+    }
+
+    flights {
+        int id PK
+        string flight_number UK
+        int aircraft_id FK
+        string flight_type "ARRIVAL, DEPARTURE"
+        string origin
+        string destination
+        datetime scheduled_time
+        datetime actual_time
+        string status "SCHEDULED, DELAYED, LANDED, DEPARTED, CANCELLED"
+        boolean is_emergency "0=Normal, 1=Distress"
+        int priority "1 (Low) to 5 (Emergency)"
+        datetime created_at
+    }
+
+    runways {
+        int id PK
+        string runway_identifier UK "e.g., RWY-09L"
+        int length_meters
+        string surface_type "ASPHALT, CONCRETE"
+        string status "FREE, OCCUPIED, MAINTENANCE, RESERVED"
+        int current_flight_id FK "Nullable"
+        datetime created_at
+        datetime updated_at
+    }
+
+    scheduling_queue {
+        int id PK
+        int flight_id FK
+        string state "READY, RUNNING, BLOCKED, COMPLETED"
+        int base_priority
+        int effective_priority
+        int arrival_time
+        int burst_time
+        int waiting_time
+        int turnaround_time
+        int completion_time
+        int aging_level "Accumulated promotions"
+        datetime created_at
+        datetime updated_at
+    }
+
+    runway_assignments {
+        int id PK
+        int flight_id FK
+        int runway_id FK
+        datetime assigned_at
+        datetime released_at "Nullable"
+        string operation_type "TAKEOFF, LANDING"
+        string status "ACTIVE, RELEASED"
+    }
+
+    operation_logs {
+        int id PK
+        int user_id FK "Nullable"
+        string action
+        string entity_name
+        int entity_id "Nullable"
+        string details
+        string status "SUCCESS, FAILURE"
+        datetime created_at
+    }

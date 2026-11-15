@@ -1,166 +1,162 @@
-# Smart Air Traffic Control Management System
+# Smart Air Traffic Control Management System (SmartATC)
 
-**Airport Runway Manager & Resource Allocation**
-B.Tech Final Year Project — OS & DBMS Concepts Demonstration
-
----
-
-## About
-
-This is an **educational desktop application** that simulates Air Traffic Control
-operations to demonstrate core Operating System and Database Management System concepts.
-
-It is **not a real-world ATC system**. It does not communicate with actual aircraft,
-provide aviation certification, or replace licensed air traffic control systems.
-
-### OS Concepts Demonstrated
-- Non-Preemptive Priority Scheduling
-- Process States and Ready Queues (PCB model)
-- Aging and Starvation Prevention
-- Mutual Exclusion and Critical Sections (Runway as shared resource)
-- Thread Synchronization (C++ std::mutex / std::thread)
-
-### DBMS Concepts Demonstrated
-- Relational Schema Design (8-table normalized database)
-- 1NF / 2NF / 3NF Normalization
-- ACID Transactions (BEGIN / COMMIT / ROLLBACK)
-- Isolation Level Demonstration (SELECT ... FOR UPDATE)
-- Referential Integrity (Foreign Keys, Constraints)
+**Airport Runway Manager & Resource Allocation**  
+*A comprehensive educational desktop simulation demonstrating Operating System and Database Management System concepts.*  
+B.Tech Final Year Capstone Project
 
 ---
 
-## Technology Stack
+## 1. Project Overview
 
-| Component       | Technology                    |
-|-----------------|-------------------------------|
-| Language        | C++17                         |
-| GUI             | Qt 6 (Widgets)                |
-| Database        | MySQL 8.x                     |
-| DB Connectivity | Qt SQL — QMYSQL driver        |
-| Build System    | CMake 3.19+                   |
-| Version Control | Git + GitHub                  |
+The **Smart Air Traffic Control Management System (SmartATC)** is an educational simulation developed in C++17 and Qt 6, integrated with a MySQL 8.0 InnoDB relational database.
 
----
+The application models the core operations of an airport control tower—managing flights, scheduling arrivals/departures, allocating runways, and handling in-flight emergencies—as a direct real-world analogy to fundamental computing principles:
+- **Operating Systems:** Process Control Blocks (PCB), Process Lifecycle States, Non-Preemptive Priority CPU Scheduling, Turnaround/Waiting Time Metrics, Starvation Prevention via Priority Aging, Critical Sections, Mutual Exclusion, and Multi-threaded Synchronization.
+- **Database Management Systems:** Third Normal Form (3NF) Relational Modeling, Multi-Statement ACID Transactions, Pessimistic Row Locking (`SELECT ... FOR UPDATE`), Referential Integrity, and Audit Trails.
 
-## Prerequisites
-
-- **Qt 6.x** — Widgets module + SQL module (with QMYSQL driver)
-- **CMake 3.19** or later
-- **MySQL 8.x** running on localhost
-- **C++17-compatible compiler** (MinGW-w64 / MSVC / GCC / Clang)
-- **Ninja** (optional, speeds up build)
+> [!IMPORTANT]
+> **Educational Simulation Disclaimer:** This software is an academic simulation built strictly for demonstrating computer science concepts. It does not interface with actual radar systems, control live aircraft, or replace certified aviation infrastructure.
 
 ---
 
-## Build Instructions
+## 2. Technology Stack
 
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/YOUR_USERNAME/Airport-Runway-Manager-Resource-Allocation.git
-cd SmartATC
-```
-
-### 2. Set up database credentials
-
-```bash
-# Copy the template and fill in your MySQL credentials
-cp db.conf.example db.conf
-# Edit db.conf and replace the placeholder values
-# IMPORTANT: db.conf is gitignored — never commit it
-```
-
-### 3. Configure with CMake
-
-```bash
-# Using Qt's bundled CMake and MinGW (Windows example):
-cmake -B build -S . \
-  -DCMAKE_PREFIX_PATH="C:/Qt/6.11.2/mingw_64" \
-  -DCMAKE_C_COMPILER="C:/Qt/Tools/mingw1310_64/bin/gcc.exe" \
-  -DCMAKE_CXX_COMPILER="C:/Qt/Tools/mingw1310_64/bin/g++.exe" \
-  -G Ninja
-```
-
-### 4. Build
-
-```bash
-cmake --build build
-```
-
-### 5. Run
-
-```bash
-# Windows
-build\SmartATC.exe
-```
+| Component | Technology | Description |
+|:---|:---|:---|
+| **Programming Language** | **C++17** | ISO standard C++ utilizing modern memory management (RAII), `std::mutex`, `std::unique_lock`, and `std::thread`. |
+| **Graphical Framework** | **Qt 6.11.2** | Native desktop UI utilizing Qt Widgets, Model-View architecture, and Signal-Slot mechanics. |
+| **Relational Database** | **MySQL 8.0** | Enterprise database running InnoDB engine with strict foreign key constraints and ACID transaction support. |
+| **Database Connector** | **Qt SQL (QMYSQL)** | Native Qt driver interfacing with 64-bit `libmysql` C client libraries. |
+| **Build Automation** | **CMake 3.19+ & Ninja** | Fast cross-platform build orchestration and compilation. |
+| **Testing Harness** | **Qt Test & CTest** | 19 automated test suites with over 360 unit, integration, and ACID verification assertions. |
+| **Version Control** | **Git & GitHub** | Distributed source code management with strict branching and milestone tagging. |
 
 ---
 
-## Database Setup (Available from Day 3)
+## 3. Project Documentation Index
 
+SmartATC includes complete, professional technical documentation, design specifications, user manuals, and architectural diagrams located in the [`docs/`](docs/) directory:
+
+### Core Project & Academic Documentation
+1. [**Project Overview**](docs/PROJECT_OVERVIEW.md) — Problem statement, computing analogy, educational goals, and system boundaries.
+2. [**Requirements Specification (SRS)**](docs/REQUIREMENTS.md) — Functional requirements (FR-AUTH to FR-DSH), RBAC matrix, and non-functional requirements.
+3. [**System Architecture**](docs/SYSTEM_ARCHITECTURE.md) — 4-tier layered architecture, module responsibilities, and fault tolerance policies.
+4. [**Team Contributions**](docs/TEAM_CONTRIBUTIONS.md) — Detailed individual module ownership and deliverables for all 4 team members.
+5. [**Installation & Setup Guide**](docs/INSTALLATION_AND_SETUP.md) — Windows environment configuration, MinGW/Qt toolchain, MySQL setup, and deployment.
+6. [**User Manual & Operator Guide**](docs/USER_MANUAL.md) — Step-by-step graphical walkthrough for Admin, ATC, and Airport Operator roles.
+7. [**Viva & Technical Defense Guide**](docs/VIVA_PREPARATION.md) — 25 in-depth technical viva questions and answers covering OS, DBMS, and C++ concepts.
+
+### Systems & Technical Design Specifications
+8. [**Operating System Concepts**](docs/OS_CONCEPTS.md) — Process models, scheduling formulas (CT, TAT, WT), aging algorithms, and mutex synchronization.
+9. [**Scheduler Design & Implementation**](docs/SCHEDULER_DESIGN.md) — Priority comparison logic, tie-breaking rules, emergency override, and worked scheduling examples.
+10. [**Runway Resource Allocation**](docs/RESOURCE_ALLOCATION.md) — Runway compatibility matrix, dual-layer state management, and critical section protection.
+11. [**DBMS Design & Relational Modeling**](docs/DBMS_DESIGN.md) — Relational algebra, 1NF/2NF/3NF normalization analysis, indexing strategy, and row locking.
+12. [**Database Schema Specification**](docs/DATABASE_SCHEMA.md) — Complete 8-table relational dictionary with data types, keys, and foreign constraints.
+13. [**Transactions & ACID Verification**](docs/TRANSACTION_AND_ACID.md) — Multi-statement atomic transactions, failure injection tests, and durability verification.
+14. [**Module Design Specification**](docs/MODULE_DESIGN.md) — Architectural specifications for all 6 functional subsystems.
+15. [**GUI & Presentation Layer**](docs/GUI_DOCUMENTATION.md) — Screen catalog, widgets, visual indicators, and live window capture instructions.
+16. [**Testing & Quality Assurance Report**](docs/TESTING_REPORT.md) — Test environment, 19 CTest test suites summary, and Day 25 defect resolutions.
+17. [**Security & Integrity Considerations**](docs/SECURITY_CONSIDERATIONS.md) — SHA-256 hashing, SQL injection defense, credential isolation, and audit trails.
+
+---
+
+## 4. Architecture Diagrams (Mermaid)
+
+All architectural and workflow diagrams are maintained in [`docs/diagrams/`](docs/diagrams/):
+
+| Diagram Title | Source File | Description |
+|:---|:---|:---|
+| **System Architecture** | [`docs/diagrams/system_architecture.mmd`](docs/diagrams/system_architecture.mmd) | Layered architecture from Qt GUI to MySQL InnoDB. |
+| **Use Case Diagram** | [`docs/diagrams/use_case_diagram.mmd`](docs/diagrams/use_case_diagram.mmd) | Operational permissions for Admin, ATC, and Airport Operator. |
+| **Core Class Diagram** | [`docs/diagrams/class_diagram.mmd`](docs/diagrams/class_diagram.mmd) | Domain models, scheduler, aging engine, resource manager, and DAO classes. |
+| **Activity Diagram** | [`docs/diagrams/activity_diagram.mmd`](docs/diagrams/activity_diagram.mmd) | End-to-end `scheduleAndAllocateNext()` operational workflow. |
+| **Sequence Diagram** | [`docs/diagrams/sequence_diagram.mmd`](docs/diagrams/sequence_diagram.mmd) | Chronological call sequence across UI, Service, Mutex, and Database. |
+| **Entity-Relationship Diagram** | [`docs/diagrams/er_diagram.mmd`](docs/diagrams/er_diagram.mmd) | 8-table relational database schema with PK/FK cardinality. |
+| **Scheduling Flowchart** | [`docs/diagrams/scheduling_flowchart.mmd`](docs/diagrams/scheduling_flowchart.mmd) | Non-preemptive priority decision logic and aging engine loop. |
+| **Runway Allocation Flowchart** | [`docs/diagrams/runway_allocation_flowchart.mmd`](docs/diagrams/runway_allocation_flowchart.mmd) | Infrastructure compatibility evaluation and contention resolution. |
+| **Transaction Flowchart** | [`docs/diagrams/transaction_flowchart.mmd`](docs/diagrams/transaction_flowchart.mmd) | Multi-statement database transaction and rollback execution path. |
+| **Process State Machine** | [`docs/diagrams/state_machine.mmd`](docs/diagrams/state_machine.mmd) | Process transitions across `READY`, `RUNNING`, `BLOCKED`, and `COMPLETED`. |
+
+---
+
+## 5. Quick Start: Build and Run
+
+### 5.1 Prerequisites
+- Windows 10/11 (64-bit)
+- Qt 6.11.2 (MinGW 64-bit) & MinGW-w64 GCC 13.1.0
+- CMake 3.19+ & Ninja
+- MySQL Server 8.0+
+
+### 5.2 Database Setup
 ```sql
--- Create the database (run once)
-CREATE DATABASE airport_runway_db
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE smartatc CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'smartatc_user'@'localhost' IDENTIFIED BY 'smartatc_pass';
+GRANT ALL PRIVILEGES ON smartatc.* TO 'smartatc_user'@'localhost';
+FLUSH PRIVILEGES;
+```
+Import database schema and seed data:
+```powershell
+cd database
+mysql -u smartatc_user -psmartatc_pass smartatc < schema.sql
+mysql -u smartatc_user -psmartatc_pass smartatc < seed_data.sql
+mysql -u smartatc_user -psmartatc_pass smartatc < migrations/migration_day14_runways.sql
+mysql -u smartatc_user -psmartatc_pass smartatc < migrations/migration_day16_emergency.sql
+mysql -u smartatc_user -psmartatc_pass smartatc < migrations/migration_day17_aging.sql
 ```
 
-```bash
--- Apply schema and seed data
-mysql -u YOUR_USER -p airport_runway_db < sql/schema.sql
-mysql -u YOUR_USER -p airport_runway_db < sql/seed.sql
+### 5.3 Configure Credentials (`db.conf`)
+Create `db.conf` in the project root:
+```ini
+[database]
+host=localhost
+port=3306
+dbname=smartatc
+user=smartatc_user
+password=smartatc_pass
+driver=QMYSQL
 ```
+
+### 5.4 Build with CMake & Ninja
+```powershell
+# Configure build
+cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="C:/Qt/6.11.2/mingw_64"
+
+# Compile project
+cmake --build build --config Release
+
+# Deploy runtime DLLs
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy_runtime.ps1
+```
+
+### 5.5 Run Automated Verification Tests
+```powershell
+cd build
+ctest --output-on-failure
+```
+*Expected Result: 19/19 Test Suites Passed (100% pass rate).*
+
+### 5.6 Launch the GUI Application
+```powershell
+.\build\bin\smartatc_gui.exe
+```
+**Default Credentials:**
+- `admin` / `admin123` (Administrator)
+- `atc_operator` / `atc123` (Air Traffic Controller)
+- `runway_ops` / `ops123` (Airport Operator)
 
 ---
 
-## Project Structure
+## 6. Team Structure & Module Ownership
 
-```
-SmartATC/
-├── CMakeLists.txt
-├── db.conf.example          ← Credential template (committed)
-├── db.conf                  ← Your local credentials (gitignored)
-├── src/
-│   ├── main.cpp
-│   ├── models/              ← C++ domain structs (Flight, Process, Runway…)
-│   ├── scheduler/           ← Priority scheduler, aging engine
-│   ├── resource/            ← Runway resource manager (mutex / critical section)
-│   ├── database/            ← DatabaseManager, data access
-│   ├── services/            ← Business logic services
-│   └── utils/               ← Shared utilities (PasswordUtils, Session…)
-├── ui/                      ← Qt 6 screens and widgets
-├── sql/
-│   ├── schema.sql           ← Full 8-table DDL
-│   ├── seed.sql             ← Sample data
-│   └── transactions.sql     ← Transaction demonstration scripts
-├── docs/                    ← Documentation, ER diagrams, DFDs
-└── tests/                   ← Unit and integration tests
-```
+| Member | Primary Module Responsibility | Core Domain |
+|:---|:---|:---|
+| **Member 1** | User & Role Management, Authentication, Session Security | Security, Auth, RBAC, Audit Logging |
+| **Member 2** | Flight & Aircraft Management, Fleet Inventory, Schedule Validation | Domain Modeling, Fleet Tracking |
+| **Member 3** | Process & Priority Scheduling, Ready Queue, Priority Aging | Operating System Simulation, Starvation |
+| **Member 4** | Runway Allocation, Mutual Exclusion, Threads, ACID Transactions | Concurrency, `std::mutex`, MySQL Transactions |
 
 ---
 
-## Team Members
+## 7. License and Academic Notice
 
-| Member   | Module                                    |
-|----------|-------------------------------------------|
-| Member 1 | User & Role Management (Auth, Session)    |
-| Member 2 | Flight & Aircraft Management              |
-| Member 3 | Process & Scheduling (Scheduler, Aging)   |
-| Member 4 | Runway Resource Management + Transactions |
-
----
-
-## Development Phases
-
-**Phase 1 (Days 1–13):** Project foundation, MySQL schema, C++ ↔ MySQL connectivity,
-login & roles, flight & aircraft management, process model, manual priority scheduler.
-
-**Phase 2 (Days 14–29):** Runway resource management, aging, starvation prevention,
-critical section, ACID transactions, full OS/DBMS integration, dashboard, testing,
-documentation, final demonstration, viva preparation.
-
----
-
-> **Disclaimer**: This system is purely for educational purposes as part of a
-> B.Tech academic project. It simulates ATC concepts to demonstrate OS and DBMS
-> principles. It is not intended for, nor suitable for, any real aviation use.
+This project was developed as a B.Tech final-year capstone project. It is licensed for academic, educational, and non-commercial research use. All simulation parameters, scheduling algorithms, and database models are open for inspection and extension.

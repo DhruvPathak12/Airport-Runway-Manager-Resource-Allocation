@@ -1,0 +1,31 @@
+flowchart TD
+    Start([Process Arrival / Scheduling Tick]) --> EvalEmergency{Is In-Flight Emergency Declared?}
+    
+    EvalEmergency -- Yes --> SetPriority5[Set Effective Priority = 5<br/>Emergency Maximum]
+    SetPriority5 --> PushQueue[Insert Process into ReadyQueue]
+
+    EvalEmergency -- No --> CheckAging{Is Priority Aging Active?}
+    CheckAging -- Yes --> CalcWait[Calculate Waiting Time = CurrentTime - ArrivalTime]
+    CalcWait --> CheckThreshold{WaitingTime >= AgingThreshold?}
+    CheckThreshold -- Yes --> IncrementPriority[EffectivePriority = min MaxCap, BasePriority + Boost]
+    CheckThreshold -- No --> UseBasePriority[EffectivePriority = BasePriority]
+    CheckAging -- No --> UseBasePriority
+    
+    IncrementPriority --> PushQueue
+    UseBasePriority --> PushQueue
+
+    PushQueue --> SortQueue[Sort ReadyQueue by: <br/>1. Effective Priority DESC <br/>2. Arrival Time ASC (FCFS) <br/>3. Flight ID ASC]
+
+    SortQueue --> DispatchRequest{Scheduler Dispatches Next Process?}
+    DispatchRequest -- No --> WaitTick([Wait for Next Tick / Event])
+    
+    DispatchRequest -- Yes --> PopHead[Pop Candidate Process from Queue Head]
+    PopHead --> CheckRunway{Compatible FREE Runway Available?}
+
+    CheckRunway -- No --> ReinsertHead[Push Candidate Back to Head of ReadyQueue]
+    ReinsertHead --> WaitRunway([Wait for Runway Release])
+
+    CheckRunway -- Yes --> OccupyRunway[Transition Process to RUNNING<br/>Occupy Runway Exclusively]
+    OccupyRunway --> ExecBurst[Execute Burst Time Duration Non-Preemptively]
+    ExecBurst --> CompleteProc[Transition Process to COMPLETED<br/>Release Runway & Record Metrics]
+    CompleteProc --> Done([Process Finished])

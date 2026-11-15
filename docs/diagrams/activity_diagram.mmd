@@ -1,0 +1,50 @@
+flowchart TD
+    Start([Start: Trigger Schedule & Allocate]) --> CheckAuth{User Authorized as Admin or ATC?}
+    CheckAuth -- No --> AccessDenied([Reject Operation: Access Denied])
+    CheckAuth -- Yes --> LockQueue[Acquire ReadyQueue Mutex]
+
+    LockQueue --> CheckQueueEmpty{Is ReadyQueue Empty?}
+    CheckQueueEmpty -- Yes --> ReleaseQueue1[Release ReadyQueue Mutex]
+    ReleaseQueue1 --> EndNoOp([No Waiting Processes: Return Success])
+
+    CheckQueueEmpty -- No --> ApplyAging{Is Priority Aging Enabled?}
+    ApplyAging -- Yes --> RunAging[Evaluate Waiting Time & Increment Priority Levels]
+    RunAging --> SortQueue[Re-sort ReadyQueue by Priority and Arrival Time]
+    ApplyAging -- No --> SortQueue
+
+    SortQueue --> PopCandidate[Pop Candidate Process from Head of Queue]
+    PopCandidate --> ReleaseQueue2[Release ReadyQueue Mutex]
+
+    ReleaseQueue2 --> FindRunway[Query ResourceManager for Compatible Free Runway]
+    FindRunway --> RunwayAvail{Compatible Free Runway Found?}
+
+    RunwayAvail -- No --> Requeue[Lock ReadyQueue & Push Candidate Back to Head]
+    Requeue --> EndBlocked([No Runway Available: Process Remains Ready])
+
+    RunwayAvail -- Yes --> AcquireResLock[Acquire ResourceManager std::mutex Lock]
+    AcquireResLock --> VerifyFree{Is Runway Still Free in Memory?}
+    VerifyFree -- No --> ReleaseResLock[Release Mutex Lock]
+    ReleaseResLock --> Requeue
+
+    VerifyFree -- Yes --> BeginTx[DatabaseManager: Begin MySQL Transaction]
+    BeginTx --> RowLock[Execute: SELECT status FROM runways WHERE id=? FOR UPDATE]
+    RowLock --> VerifyDbFree{Is Runway FREE in Database?}
+    
+    VerifyDbFree -- No --> Rollback1[DatabaseManager: Rollback Transaction]
+    Rollback1 --> ReleaseResLock
+    
+    VerifyDbFree -- Yes --> UpdateFlight[UPDATE flights SET status='LANDED'/'DEPARTED']
+    UpdateFlight --> InsertAssign[INSERT INTO runway_assignments]
+    InsertAssign --> UpdateRunway[UPDATE runways SET status='OCCUPIED', current_flight_id=?]
+    UpdateRunway --> UpdateQueue[UPDATE scheduling_queue SET state='COMPLETED']
+
+    UpdateQueue --> CheckAllSql{All 4 SQL Statements Succeeded?}
+    CheckAllSql -- No --> Rollback2[DatabaseManager: Rollback Transaction]
+    Rollback2 --> ReleaseResLock
+
+    CheckAllSql -- Yes --> CommitTx[DatabaseManager: Commit Transaction]
+    CommitTx --> UpdateMemState[Update In-Memory Runway & Process States to RUNNING/COMPLETED]
+    UpdateMemState --> ReleaseResLockSuccess[Release ResourceManager Mutex Lock]
+    ReleaseResLockSuccess --> AuditLog[Log Action to operation_logs]
+    AuditLog --> NotifyUI[Emit Qt Signals to Update GUI Views]
+    NotifyUI --> SuccessEnd([Success: Runway Allocated & Flight Dispatched])
