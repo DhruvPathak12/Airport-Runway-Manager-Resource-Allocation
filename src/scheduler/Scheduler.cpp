@@ -181,9 +181,7 @@ Scheduler::CompletionResult Scheduler::completeRunningProcess(const QDateTime &c
     }
 
     res = completeProcess(m_runningProcess, completedAt);
-    if (res.success) {
-        clearRunningProcess();
-    }
+    clearRunningProcess();
     return res;
 }
 

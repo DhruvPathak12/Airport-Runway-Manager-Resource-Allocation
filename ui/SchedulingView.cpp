@@ -981,7 +981,7 @@ void SchedulingView::onClockTick()
         }
 
         // When burst time reaches 0, automatically complete process and free the CPU
-        if (remainingSec == 0) {
+        if (remainingSec <= 0) {
             QString compErr;
             m_service->completeRunningProcess(now, nullptr, &compErr);
             m_runningStartedAt = QDateTime();

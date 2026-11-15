@@ -4696,13 +4696,8 @@ bool ApplicationService::completeRunningProcess(const QDateTime &completedAt,
       }
 
       if (q.numRowsAffected() == 0) {
-        if (outError) {
-          *outError =
-              QStringLiteral("Database update failed: process for flight %1 "
-                             "was not in 'Running' state in database.")
-                  .arg(running.flightId);
-        }
-        return false;
+        qDebug() << "[ApplicationService] completeRunningProcess: row for flight"
+                 << running.flightId << "was already completed or not in 'Running' state.";
       }
     }
   }
