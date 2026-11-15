@@ -26,7 +26,7 @@ void LoginView::setupUi()
 
     // Card frame
     QFrame *card = new QFrame;
-    card->setFixedWidth(380);
+    card->setFixedWidth(420);
     card->setStyleSheet(R"(
         QFrame {
             background-color: #ffffff;
@@ -134,6 +134,7 @@ void LoginView::setupUi()
 
     // Database connection status footnote
     m_dbStatusLabel = new QLabel;
+    m_dbStatusLabel->setWordWrap(true);
     m_dbStatusLabel->setAlignment(Qt::AlignCenter);
     m_dbStatusLabel->setStyleSheet("font-size: 10px; color: #888;");
     DatabaseManager &db = DatabaseManager::instance();

@@ -900,6 +900,9 @@ Models::AllocationResult ApplicationService::allocateRunway(int runwayId,
     m_resourceManager->confirmAllocationUnlocked(runwayId, flightId);
   }
 
+  // Explicitly release critical section mutex before notifying UI observers
+  csLock.reset();
+
   m_lastTx = {QStringLiteral("RUNWAY_ASSIGN"),
               runwayId,
               flightId,
@@ -1222,6 +1225,9 @@ bool ApplicationService::releaseRunwayResource(int runwayId,
   if (m_resourceManager) {
     m_resourceManager->releaseRunwayUnlocked(runwayId);
   }
+
+  // Explicitly release critical section mutex before notifying UI observers
+  csLock.reset();
 
   m_lastTx = {
       QStringLiteral("RUNWAY_RELEASE"),

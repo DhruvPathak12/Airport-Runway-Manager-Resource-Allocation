@@ -34,7 +34,7 @@ RunwaysView::RunwaysView(ApplicationService *service, QWidget *parent)
                             m_csBanner->setStyleSheet(QStringLiteral(
                                 "background-color: #fefce8; color: #854d0e; border: 1px solid #fef08a; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500;"));
                         }
-                    });
+                    }, Qt::QueuedConnection);
 
             connect(m_service->resourceManager(), &ResourceManager::runwayReserved,
                     this, [this](int runwayId, int flightId) {
@@ -45,7 +45,7 @@ RunwaysView::RunwaysView(ApplicationService *service, QWidget *parent)
                                 "background-color: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500;"));
                         }
                         refreshRunways();
-                    });
+                    }, Qt::QueuedConnection);
 
             connect(m_service->resourceManager(), &ResourceManager::runwayReleased,
                     this, [this](int runwayId) {
@@ -56,7 +56,7 @@ RunwaysView::RunwaysView(ApplicationService *service, QWidget *parent)
                                 "background-color: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500;"));
                         }
                         refreshRunways();
-                    });
+                    }, Qt::QueuedConnection);
 
             connect(m_service->resourceManager(), &ResourceManager::allocationContentionRejected,
                     this, [this](int runwayId, int flightId, const QString &reason) {
@@ -68,7 +68,7 @@ RunwaysView::RunwaysView(ApplicationService *service, QWidget *parent)
                                 "background-color: #fef2f2; color: #991b1b; border: 1px solid #fecaca; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500;"));
                         }
                         refreshRunways();
-                    });
+                    }, Qt::QueuedConnection);
         }
     }
 }
@@ -250,6 +250,7 @@ QWidget* RunwaysView::createConcurrentTab()
 
     // ── 3. Status Banner ─────────────────────────────────────────────────────
     m_demoStatusLabel = new QLabel(QStringLiteral("ℹ️ Ready to launch concurrent threads. Select a runway and click 'Start Concurrent Test'."), tab);
+    m_demoStatusLabel->setWordWrap(true);
     m_demoStatusLabel->setStyleSheet(R"(
         QLabel {
             background-color: #f8fafc;
@@ -278,9 +279,11 @@ QWidget* RunwaysView::createConcurrentTab()
 
         QLabel *tLabel = new QLabel(title, card);
         tLabel->setStyleSheet("font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase;");
+        tLabel->setWordWrap(true);
 
         valLabel = new QLabel(initVal, card);
         valLabel->setStyleSheet(QStringLiteral("font-size: 16px; font-weight: bold; color: %1;").arg(accentColor));
+        valLabel->setWordWrap(true);
 
         cLayout->addWidget(tLabel);
         cLayout->addWidget(valLabel);
@@ -314,12 +317,19 @@ QWidget* RunwaysView::createConcurrentTab()
     m_demoTable->setAlternatingRowColors(true);
     m_demoTable->setShowGrid(false);
 
-    m_demoTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    m_demoTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    m_demoTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    m_demoTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    m_demoTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    m_demoTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+    m_demoTable->horizontalHeader()->setMinimumSectionSize(80);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
+    m_demoTable->horizontalHeader()->resizeSection(0, 120);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+    m_demoTable->horizontalHeader()->resizeSection(1, 160);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive);
+    m_demoTable->horizontalHeader()->resizeSection(2, 140);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
+    m_demoTable->horizontalHeader()->resizeSection(3, 140);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Interactive);
+    m_demoTable->horizontalHeader()->resizeSection(4, 130);
+    m_demoTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Interactive);
+    m_demoTable->horizontalHeader()->resizeSection(5, 140);
     m_demoTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Stretch);
 
     m_demoTable->setStyleSheet(R"(
@@ -392,6 +402,8 @@ QWidget* RunwaysView::createLiveTab()
 
     // ── 1b. OS Mutual Exclusion & Critical Section Activity Banner ───────────
     m_csBanner = new QLabel(QStringLiteral("🔒 Mutual Exclusion: Active | Shared runway resources protected by RAII mutex"), this);
+    m_csBanner->setWordWrap(true);
+    m_csBanner->setMinimumHeight(38);
     m_csBanner->setStyleSheet(R"(
         QLabel {
             background-color: #f0fdf4;
@@ -617,13 +629,17 @@ QWidget* RunwaysView::createLiveTab()
     m_tableWidget->setAlternatingRowColors(true);
     m_tableWidget->setShowGrid(false);
     m_tableWidget->verticalHeader()->setVisible(false);
-    m_tableWidget->horizontalHeader()->setStretchLastSection(true);
+    m_tableWidget->horizontalHeader()->setMinimumSectionSize(80);
     m_tableWidget->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    m_tableWidget->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(1, 160);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(2, 180);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(3, 160);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(5, 230);
 
     m_tableWidget->setStyleSheet(R"(
         QTableWidget {

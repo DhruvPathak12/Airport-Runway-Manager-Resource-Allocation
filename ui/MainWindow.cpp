@@ -45,6 +45,7 @@ MainWindow::MainWindow(ApplicationService *service, QWidget *parent)
 {
     setWindowTitle("Smart Air Traffic Control Management System");
     setMinimumSize(1100, 720);
+    resize(1280, 800);
     setupUi();
 
     if (m_service) {

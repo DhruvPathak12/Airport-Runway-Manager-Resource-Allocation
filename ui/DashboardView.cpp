@@ -154,7 +154,7 @@ QWidget* DashboardView::createKpiCard(const QString &icon, const QString &title,
     card->setStyleSheet(QStringLiteral(
         "QFrame { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; }"
     ));
-    card->setMinimumWidth(160);
+    card->setMinimumWidth(130);
 
     QVBoxLayout *cardLayout = new QVBoxLayout(card);
     cardLayout->setContentsMargins(16, 12, 16, 12);
@@ -170,6 +170,7 @@ QWidget* DashboardView::createKpiCard(const QString &icon, const QString &title,
 
     QLabel *titleLbl = new QLabel(title, card);
     titleLbl->setStyleSheet(QStringLiteral("font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase;"));
+    titleLbl->setWordWrap(true);
     topLayout->addWidget(titleLbl);
     topLayout->addStretch();
     cardLayout->addLayout(topLayout);
@@ -183,6 +184,7 @@ QWidget* DashboardView::createKpiCard(const QString &icon, const QString &title,
     if (!subtitle.isEmpty()) {
         QLabel *subLbl = new QLabel(subtitle, card);
         subLbl->setStyleSheet(QStringLiteral("font-size: 11px; color: #94a3b8;"));
+        subLbl->setWordWrap(true);
         cardLayout->addWidget(subLbl);
     }
 
@@ -208,7 +210,7 @@ QWidget* DashboardView::createKpiSection()
 
     vbox->addLayout(row1);
 
-    // Row 2: Runway Status & OS Process Queue Metrics
+    // Row 2: Physical Runway Asset States
     QHBoxLayout *row2 = new QHBoxLayout();
     row2->setSpacing(12);
 
@@ -216,11 +218,18 @@ QWidget* DashboardView::createKpiSection()
     row2->addWidget(createKpiCard(QStringLiteral("🔴"), QStringLiteral("Occupied Runways"), m_lblOccupiedRunways, QStringLiteral("#d97706"), QStringLiteral("Currently active")));
     row2->addWidget(createKpiCard(QStringLiteral("🟡"), QStringLiteral("Maintenance"), m_lblMaintenanceRunways, QStringLiteral("#64748b"), QStringLiteral("Offline for repairs")));
     row2->addWidget(createKpiCard(QStringLiteral("📊"), QStringLiteral("Utilization"), m_lblRunwayUtilization, QStringLiteral("#4f46e5"), QStringLiteral("(Occupied / Total) × 100")));
-    row2->addWidget(createKpiCard(QStringLiteral("⏳"), QStringLiteral("Ready Queue"), m_lblReadyQueue, QStringLiteral("#7c3aed"), QStringLiteral("Waiting OS processes")));
-    row2->addWidget(createKpiCard(QStringLiteral("⚙"), QStringLiteral("Running CPU"), m_lblRunningProcesses, QStringLiteral("#0284c7"), QStringLiteral("Active dispatch")));
-    row2->addWidget(createKpiCard(QStringLiteral("✅"), QStringLiteral("Completed"), m_lblCompletedProcesses, QStringLiteral("#059669"), QStringLiteral("Turnaround recorded")));
 
     vbox->addLayout(row2);
+
+    // Row 3: OS Process Queue & Dispatch Simulation Metrics
+    QHBoxLayout *row3 = new QHBoxLayout();
+    row3->setSpacing(12);
+
+    row3->addWidget(createKpiCard(QStringLiteral("⏳"), QStringLiteral("Ready Queue"), m_lblReadyQueue, QStringLiteral("#7c3aed"), QStringLiteral("Waiting OS processes")));
+    row3->addWidget(createKpiCard(QStringLiteral("⚙"), QStringLiteral("Running CPU"), m_lblRunningProcesses, QStringLiteral("#0284c7"), QStringLiteral("Active dispatch")));
+    row3->addWidget(createKpiCard(QStringLiteral("✅"), QStringLiteral("Completed"), m_lblCompletedProcesses, QStringLiteral("#059669"), QStringLiteral("Turnaround recorded")));
+
+    vbox->addLayout(row3);
     return kpiContainer;
 }
 

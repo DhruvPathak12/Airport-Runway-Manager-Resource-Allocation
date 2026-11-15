@@ -14,7 +14,8 @@ RunwayAllocationDialog::RunwayAllocationDialog(ApplicationService *service, int 
     , m_initialRunwayId(preselectedRunwayId)
 {
     setWindowTitle(QStringLiteral("Allocate Runway Resource"));
-    resize(720, 520);
+    setMinimumSize(860, 580);
+    resize(920, 620);
     setStyleSheet(R"(
         QDialog {
             background-color: #ffffff;
@@ -97,7 +98,8 @@ void RunwayAllocationDialog::setupUi()
     rwLayout->addLayout(rwComboLayout);
 
     m_runwayDetails = new QLabel(runwayGroup);
-    m_runwayDetails->setStyleSheet("color: #475569; font-size: 12px; margin-left: 134px;");
+    m_runwayDetails->setWordWrap(true);
+    m_runwayDetails->setStyleSheet("color: #475569; font-size: 12px; padding: 4px 0px;");
     rwLayout->addWidget(m_runwayDetails);
 
     mainLayout->addWidget(runwayGroup);
@@ -118,12 +120,18 @@ void RunwayAllocationDialog::setupUi()
         QStringLiteral("Status"),
         QStringLiteral("Scheduled")
     });
-    m_flightsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_flightsTable->horizontalHeader()->setMinimumSectionSize(80);
+    m_flightsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
+    m_flightsTable->horizontalHeader()->resizeSection(0, 110);
     m_flightsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    m_flightsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    m_flightsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    m_flightsTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    m_flightsTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+    m_flightsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive);
+    m_flightsTable->horizontalHeader()->resizeSection(2, 110);
+    m_flightsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
+    m_flightsTable->horizontalHeader()->resizeSection(3, 90);
+    m_flightsTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Interactive);
+    m_flightsTable->horizontalHeader()->resizeSection(4, 110);
+    m_flightsTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Interactive);
+    m_flightsTable->horizontalHeader()->resizeSection(5, 150);
     m_flightsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_flightsTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_flightsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);

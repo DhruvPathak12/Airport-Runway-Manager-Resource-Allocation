@@ -249,6 +249,7 @@ QWidget* SchedulingView::createLiveTab()
 
     // ── RBAC Notice ──────────────────────────────────────────────────────────
     m_permNotice = new QLabel(tab);
+    m_permNotice->setWordWrap(true);
     m_permNotice->setStyleSheet(R"(
         QLabel {
             background-color: #fffbeb;
@@ -264,6 +265,7 @@ QWidget* SchedulingView::createLiveTab()
 
     // ── Running Process Banner ───────────────────────────────────────────────
     m_runningBanner = new QLabel(QStringLiteral("CPU / Runway Dispatcher: IDLE (No process running)"), tab);
+    m_runningBanner->setWordWrap(true);
     m_runningBanner->setStyleSheet(R"(
         QLabel {
             background-color: #f8fafc;
@@ -299,10 +301,26 @@ QWidget* SchedulingView::createLiveTab()
     m_tableWidget->setAlternatingRowColors(true);
     m_tableWidget->setShowGrid(false);
     m_tableWidget->verticalHeader()->setVisible(false);
-    m_tableWidget->horizontalHeader()->setStretchLastSection(true);
-    for (int col = 0; col < 9; ++col) {
-        m_tableWidget->horizontalHeader()->setSectionResizeMode(col, QHeaderView::ResizeToContents);
-    }
+    m_tableWidget->horizontalHeader()->setMinimumSectionSize(70);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(0, 120);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(1, 90);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(3, 100);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(4, 120);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(5, 90);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(6, 90);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(7, 120);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(8, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(8, 110);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(9, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(9, 90);
 
     m_tableWidget->setStyleSheet(R"(
         QTableWidget {
@@ -546,11 +564,12 @@ QWidget* SchedulingView::createStarvationTab()
 
     m_comparisonTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_comparisonTable->setSelectionMode(QAbstractItemView::NoSelection);
-    m_comparisonTable->horizontalHeader()->setStretchLastSection(true);
-    m_comparisonTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_comparisonTable->setMinimumHeight(240);
+    m_comparisonTable->horizontalHeader()->setMinimumSectionSize(120);
+    m_comparisonTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
+    m_comparisonTable->horizontalHeader()->resizeSection(0, 220);
     m_comparisonTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_comparisonTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    m_comparisonTable->setFixedHeight(225);
 
     m_comparisonTable->setStyleSheet(R"(
         QTableWidget {
@@ -621,10 +640,26 @@ QWidget* SchedulingView::createStarvationTab()
     m_simProcessesTable->setAlternatingRowColors(true);
     m_simProcessesTable->setShowGrid(false);
     m_simProcessesTable->verticalHeader()->setVisible(false);
-    m_simProcessesTable->horizontalHeader()->setStretchLastSection(true);
-    for (int col = 0; col < 9; ++col) {
-        m_simProcessesTable->horizontalHeader()->setSectionResizeMode(col, QHeaderView::ResizeToContents);
-    }
+    m_simProcessesTable->horizontalHeader()->setMinimumSectionSize(60);
+    m_simProcessesTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
+    m_simProcessesTable->horizontalHeader()->resizeSection(0, 60);
+    m_simProcessesTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+    m_simProcessesTable->horizontalHeader()->resizeSection(1, 90);
+    m_simProcessesTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive);
+    m_simProcessesTable->horizontalHeader()->resizeSection(2, 90);
+    m_simProcessesTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
+    m_simProcessesTable->horizontalHeader()->resizeSection(3, 110);
+    m_simProcessesTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Interactive);
+    m_simProcessesTable->horizontalHeader()->resizeSection(4, 90);
+    m_simProcessesTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Interactive);
+    m_simProcessesTable->horizontalHeader()->resizeSection(5, 90);
+    m_simProcessesTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Interactive);
+    m_simProcessesTable->horizontalHeader()->resizeSection(6, 90);
+    m_simProcessesTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Interactive);
+    m_simProcessesTable->horizontalHeader()->resizeSection(7, 110);
+    m_simProcessesTable->horizontalHeader()->setSectionResizeMode(8, QHeaderView::Interactive);
+    m_simProcessesTable->horizontalHeader()->resizeSection(8, 100);
+    m_simProcessesTable->horizontalHeader()->setSectionResizeMode(9, QHeaderView::Stretch);
 
     m_simProcessesTable->setStyleSheet(R"(
         QTableWidget {

@@ -275,10 +275,28 @@ void FlightsView::setupUi()
     m_tableWidget->setAlternatingRowColors(true);
     m_tableWidget->setShowGrid(false);
     m_tableWidget->verticalHeader()->setVisible(false);
-    m_tableWidget->horizontalHeader()->setStretchLastSection(true);
-    for (int col = 0; col < 10; ++col) {
-        m_tableWidget->horizontalHeader()->setSectionResizeMode(col, QHeaderView::ResizeToContents);
-    }
+    m_tableWidget->horizontalHeader()->setMinimumSectionSize(60);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(0, 50);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(1, 90);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(2, 130);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(3, 80);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(5, 140);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(6, 90);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(7, 110);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(8, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(8, 90);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(9, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(9, 130);
+    m_tableWidget->horizontalHeader()->setSectionResizeMode(10, QHeaderView::Interactive);
+    m_tableWidget->horizontalHeader()->resizeSection(10, 130);
 
     m_tableWidget->setStyleSheet(R"(
         QTableWidget {
