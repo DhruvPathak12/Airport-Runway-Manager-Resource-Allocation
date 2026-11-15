@@ -147,12 +147,11 @@ sequenceDiagram
     Sched-->>AppSvc: process set to Running
 
     AppSvc->>DB: START TRANSACTION
-    AppSvc->>DB: SELECT * FROM runways WHERE runway_id = ? FOR UPDATE
-    AppSvc->>DB: INSERT INTO runway_assignments (...)
+    AppSvc->>DB: SELECT FOR UPDATE on runways, runway_assignments, flights
+    AppSvc->>DB: INSERT INTO runway_assignments (status='Active')
     AppSvc->>DB: UPDATE runways SET status = 'Occupied' WHERE runway_id = ?
     AppSvc->>DB: UPDATE flights SET operational_status = 'Cleared' WHERE flight_id = ?
-    AppSvc->>DB: UPDATE scheduling_queue SET process_state = 'Running' WHERE flight_id = ?
-    AppSvc->>DB: INSERT INTO operation_logs (...)
+    AppSvc->>DB: INSERT INTO operation_logs (transaction_status='Committed')
     AppSvc->>DB: COMMIT
 
     Note over AppSvc,RM: Step 5: Synchronize In-Memory State

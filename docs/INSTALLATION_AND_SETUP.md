@@ -1,4 +1,4 @@
-# Installation and Setup Guide
+# Installation and Setup Guide — SmartATC
 
 This guide details the complete process for setting up the development environment, configuring MySQL 8.0, compiling the C++17 / Qt 6 codebase, executing automated tests, deploying runtime libraries, and launching the **Smart Air Traffic Control Management System (SmartATC)** on Windows.
 
@@ -9,13 +9,13 @@ This guide details the complete process for setting up the development environme
 ### 1.1 Hardware Specifications
 - **Processor:** x86_64 Dual-Core CPU (Quad-core 2.5 GHz+ recommended)
 - **RAM:** Minimum 4 GB (8 GB recommended for compilation)
-- **Disk Space:** 5 GB free disk space (accounting for Qt toolchain and CMake build artifacts)
+- **Disk Space:** 5 GB free disk space (for Qt toolchain and CMake build artifacts)
 
 ### 1.2 Required Software and Toolchains
 Ensure the following tools are installed and accessible via system `PATH`:
 
 1. **Operating System:** Windows 10 or 11 (64-bit).
-2. **Compiler:** MinGW-w64 GCC/G++ 13.1.0 (64-bit) (installed with Qt or standalone).
+2. **Compiler:** MinGW-w64 GCC/G++ 13.1.0 (64-bit) (bundled with Qt or standalone).
 3. **Build Tools:**
    - **CMake:** Version 3.19 or higher (`cmake --version`).
    - **Ninja:** High-performance build generator (`ninja --version`).
@@ -25,8 +25,8 @@ Ensure the following tools are installed and accessible via system `PATH`:
    - Qt installation path example: `C:\Qt\6.11.2\mingw_64`.
    - MinGW toolchain path example: `C:\Qt\Tools\mingw1310_64\bin`.
 5. **Database Server:**
-   - **MySQL Server 8.0.x** (or higher) with InnoDB engine.
-   - MySQL Client C libraries (`libmysql.dll`) matching the 64-bit MinGW architecture.
+   - **MySQL Server 8.0.x** (or higher) with InnoDB storage engine.
+   - MySQL Client C library (`libmysql.dll`) matching 64-bit MinGW architecture.
 
 ---
 
@@ -40,13 +40,13 @@ Get-Service -Name MySQL80 | Start-Service
 ```
 
 ### 2.2 Database and User Creation
-Open the MySQL command-line client or MySQL Workbench as `root`:
+Open the MySQL command-line client or MySQL Workbench as an administrator:
 ```sql
 -- Create database
 CREATE DATABASE IF NOT EXISTS smartatc CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- Create application user
-CREATE USER IF NOT EXISTS 'smartatc_user'@'localhost' IDENTIFIED BY 'smartatc_pass';
+-- Create application user with your chosen credentials
+CREATE USER IF NOT EXISTS 'smartatc_user'@'localhost' IDENTIFIED BY '<YOUR_DB_PASSWORD>';
 
 -- Grant required privileges
 GRANT ALL PRIVILEGES ON smartatc.* TO 'smartatc_user'@'localhost';
@@ -54,27 +54,25 @@ FLUSH PRIVILEGES;
 ```
 
 ### 2.3 Running Schema and Seed Scripts
-Execute the SQL files in chronological order located in `database/`:
+Execute the SQL files in chronological order located in `sql/`:
 ```powershell
-cd "d:\Projects\Airport Runway Manager &Resource Allocation\SmartATC\database"
+cd "d:\Projects\Airport Runway Manager &Resource Allocation\SmartATC\sql"
 
 # 1. Base Relational Schema
-mysql -u smartatc_user -psmartatc_pass smartatc < schema.sql
+mysql -u smartatc_user -p smartatc < schema.sql
 
-# 2. Base Seed Data (Roles, Initial Admin, Aircraft, Runways)
-mysql -u smartatc_user -psmartatc_pass smartatc < seed_data.sql
+# 2. Seed Data (Roles, Users, Aircraft, Runways)
+mysql -u smartatc_user -p smartatc < seed.sql
 
 # 3. Apply Schema Migrations
-mysql -u smartatc_user -psmartatc_pass smartatc < migrations/migration_day14_runways.sql
-mysql -u smartatc_user -psmartatc_pass smartatc < migrations/migration_day16_emergency.sql
-mysql -u smartatc_user -psmartatc_pass smartatc < migrations/migration_day17_aging.sql
+mysql -u smartatc_user -p smartatc < migration_day17_aging.sql
 ```
 
 ---
 
 ## 3. Database Configuration (`db.conf`)
 
-SmartATC connects to MySQL using a local configuration file named `db.conf`. This file is excluded from Git tracking to protect credentials.
+SmartATC connects to MySQL using a local configuration file named `db.conf`. This file is excluded from Git tracking to protect private credentials.
 
 Create `db.conf` in the project root (`SmartATC/db.conf`) or copy it to the build output directory (`build/db.conf`):
 
@@ -84,12 +82,13 @@ host=localhost
 port=3306
 dbname=smartatc
 user=smartatc_user
-password=smartatc_pass
+password=<YOUR_DB_PASSWORD>
 driver=QMYSQL
 ```
 
 > [!NOTE]
-> If `db.conf` is missing, the application automatically enters **Offline Simulation Mode**, allowing in-memory process scheduling, starvation demonstrations, and unit tests to operate without an active database connection.
+> **Graceful Offline Mode:**  
+> If `db.conf` is missing or the MySQL connection is unavailable, SmartATC automatically enters **In-Memory Simulation Mode**. In-memory process scheduling, priority aging, starvation demonstration, and thread synchronization continue functioning without an active database connection.
 
 ---
 
@@ -121,7 +120,7 @@ cmake --build build --config Release
 ```
 This builds:
 - `build/bin/smartatc_gui.exe`: Main graphical application.
-- `build/bin/manage_users.exe`: Interactive user administration CLI.
+- `build/bin/manage_users.exe`: Interactive user administration console tool.
 - 19 automated CTest binaries in `build/tests/`.
 
 ---
@@ -130,20 +129,20 @@ This builds:
 
 SmartATC includes a 19-suite automated verification suite powered by Qt Test and CTest.
 
-### 5.1 Offline Mode (Fast Execution)
+### 5.1 In-Memory Simulation Verification (Fast Execution)
 Executes all in-memory OS scheduling, data model, critical section, and threading tests:
 ```powershell
 cd "d:\Projects\Airport Runway Manager &Resource Allocation\SmartATC\build"
 ctest --output-on-failure
 ```
-*Expected: 19/19 tests pass (0 failures, ~1 second).*
+*Expected: 19/19 test suites pass (0 failures).*
 
 ### 5.2 Live Database Mode (ACID & Transaction Verification)
 Ensure `db.conf` is present in `build/` or project root and run tests against the live MySQL instance:
 ```powershell
 ctest --output-on-failure
 ```
-*Expected: 19/19 tests pass (including `TestDatabaseTransactions`, `TestACIDProperties`, and `TestCompleteIntegration`).*
+*Expected: 19/19 test suites pass (including `TestDatabaseTransactions`, `TestACIDProperties`, and `TestCompleteIntegration`).*
 
 ---
 
@@ -177,11 +176,15 @@ cd "d:\Projects\Airport Runway Manager &Resource Allocation\SmartATC\build\bin"
 .\smartatc_gui.exe
 ```
 
-### 7.2 Initial Login Credentials
-The seed database provides default credentials for demonstration:
-- **Username:** `admin` | **Password:** `admin123` *(Role: Administrator)*
-- **Username:** `atc_operator` | **Password:** `atc123` *(Role: Air Traffic Controller)*
-- **Username:** `runway_ops` | **Password:** `ops123` *(Role: Airport Operator)*
+### 7.2 Demonstration Accounts
+The database seed script provides default user accounts for the three defined roles:
+- **`admin`** — Role: Administrator (Full management, scheduling, and audit oversight).
+- **`atc_operator`** — Role: Air Traffic Controller (Flight operations, emergency declarations, process dispatching, runway allocation).
+- **`runway_ops`** — Role: Airport Operator (Fleet management, runway maintenance toggle, contention demonstration).
+
+> [!WARNING]
+> **Password Security Notice:**  
+> Passwords in the database are stored as SHA-256 digests. Passwords should be updated upon initial installation. In production systems, modern salted hashing algorithms such as **Argon2id** or **bcrypt** should replace unsalted SHA-256.
 
 ---
 

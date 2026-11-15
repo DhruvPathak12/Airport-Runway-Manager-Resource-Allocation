@@ -1,33 +1,32 @@
 flowchart TD
-    StartTx([Begin Transaction: allocateRunwayWithTransaction]) --> QSqlBegin[QSqlDatabase::transaction()]
+    StartTx([Call: ApplicationService::allocateRunway]) --> QSqlBegin[Begin Transaction: db.transaction]
     
-    QSqlBegin --> Step0[Pessimistic Locking:<br/>SELECT status FROM runways WHERE id=? FOR UPDATE]
-    Step0 --> Step0Check{Query Succeeded & Status == FREE?}
-    Step0Check -- Failure / Already Locked --> DoRollback
+    QSqlBegin --> Step0[Pessimistic Locking & Validation:<br/>SELECT FOR UPDATE on runways, runway_assignments, flights, scheduling_queue]
+    Step0 --> Step0Check{Runway Available & Flight Eligible?}
+    Step0Check -- No / Conflict / Lock Timeout --> DoRollback
 
-    Step0Check -- Success --> Step1[Step 1: UPDATE flights<br/>SET status = 'LANDED'/'DEPARTED'<br/>WHERE id = ?]
-    Step1 --> Step1Check{Step 1 Succeeded & Rows Affected == 1?}
-    Step1Check -- Failure / Row Missing --> DoRollback
+    Step0Check -- Yes --> Step1[1. INSERT INTO runway_assignments<br/>status = 'Active']
+    Step1 --> Step1Check{Assignment Inserted?}
+    Step1Check -- Failure --> DoRollback
 
-    Step1Check -- Success --> Step2[Step 2: INSERT INTO runway_assignments<br/>(flight_id, runway_id, assigned_at, status)<br/>VALUES (?, ?, NOW(), 'ACTIVE')]
-    Step2 --> Step2Check{Step 2 Succeeded?}
-    Step2Check -- Failure / FK Violation --> DoRollback
+    Step1Check -- Yes --> Step2[2. UPDATE runways<br/>SET status = 'Occupied']
+    Step2 --> Step2Check{Runway Status Updated?}
+    Step2Check -- Failure --> DoRollback
 
-    Step2Check -- Success --> Step3[Step 3: UPDATE runways<br/>SET status = 'OCCUPIED', current_flight_id = ?<br/>WHERE id = ?]
-    Step3 --> Step3Check{Step 3 Succeeded & Rows Affected == 1?}
-    Step3Check -- Failure / Constraint Check --> DoRollback
+    Step2Check -- Yes --> Step3[3. UPDATE flights<br/>SET operational_status = 'Cleared'<br/>if Scheduled or Taxiing]
+    Step3 --> Step3Check{Flight Status Updated?}
+    Step3Check -- Failure --> DoRollback
 
-    Step3Check -- Success --> Step4[Step 4: UPDATE scheduling_queue<br/>SET state = 'COMPLETED', updated_at = NOW()<br/>WHERE flight_id = ?]
-    Step4 --> Step4Check{Step 4 Succeeded?}
+    Step3Check -- Yes --> Step4[4. INSERT INTO operation_logs<br/>transaction_status = 'Committed'<br/>Inside Transaction Boundary]
+    Step4 --> Step4Check{Audit Log Inserted?}
     Step4Check -- Failure --> DoRollback
 
-    Step4Check -- Success --> QSqlCommit[QSqlDatabase::commit()]
+    Step4Check -- Yes --> QSqlCommit[Execute: db.commit]
     QSqlCommit --> CommitCheck{Commit Succeeded?}
     CommitCheck -- Failure --> DoRollback
 
-    CommitCheck -- Success --> AuditSuccess[Log SUCCESS to operation_logs]
-    AuditSuccess --> Success([Transaction Completed Successfully])
+    CommitCheck -- Yes --> MemConfirm[ResourceManager: confirmAllocationUnlocked<br/>Mark In-Memory Runway Occupied]
+    MemConfirm --> Success([Success: Allocation Committed])
 
-    DoRollback[Execute QSqlDatabase::rollback()] --> AuditFail[Log FAILURE to operation_logs]
-    AuditFail --> RevertMem[Revert In-Memory Runway & Process State]
-    RevertMem --> Failure([Transaction Aborted: Complete Rollback Guaranteed])
+    DoRollback[Execute: db.rollback] --> MemRollback[ResourceManager: rollbackAllocationUnlocked<br/>Revert In-Memory Runway to Available]
+    MemRollback --> Failure([Transaction Rolled Back: All DB Changes Discarded])

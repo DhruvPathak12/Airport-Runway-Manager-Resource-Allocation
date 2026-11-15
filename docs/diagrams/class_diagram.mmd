@@ -1,107 +1,125 @@
 classDiagram
     class Process {
-        -int m_processId
-        -int m_flightId
-        -ProcessState m_state
-        -int m_basePriority
-        -int m_effectivePriority
-        -int m_arrivalTime
-        -int m_burstTime
-        -int m_waitingTime
-        -int m_turnaroundTime
-        -int m_completionTime
-        -uint8_t m_agingLevel
-        +getEffectivePriority() int
-        +setEffectivePriority(int) void
-        +incrementAgingLevel() void
-        +transitionState(ProcessState) void
+        +int id
+        +int flightId
+        +QDateTime arrivalTime
+        +int basePriority
+        +int effectivePriority
+        +QDateTime readySince
+        +int agingLevel
+        +bool isEmergency
+        +int serviceTime
+        +ProcessState state
+        +int waitingTime
+        +int turnaroundTime
+        +QDateTime completionTime
+        +setEmergency(bool) void
+        +calculateAgingLevels(QDateTime, int) int
+        +calculateEffectivePriority(QDateTime, int) int
     }
 
     class ReadyQueue {
-        -std::vector~Process~ m_queue
-        -mutable std::mutex m_queueMutex
-        +push(Process) void
-        +pop() Process
-        +peek() Process
-        +size() size_t
+        -QList~Process~ m_queue
+        -mutable QMutex m_mutex
+        +enqueue(Process, QString*) bool
+        +dequeue(Process*, QString*) bool
+        +peek(Process*) bool
+        +size() int
         +isEmpty() bool
-        +updatePriorities() void
+        +allProcesses() QList~Process~
     }
 
     class Scheduler {
         -ReadyQueue m_readyQueue
-        -std::vector~Process~ m_completedList
-        -int m_currentTime
-        +addProcess(Process) void
-        +scheduleNext() Process
-        +calculateMetrics() SchedulingMetrics
-        +getAverageWaitingTime() double
-        +getAverageTurnaroundTime() double
+        -AgingEngine m_agingEngine
+        -bool m_hasRunningProcess
+        -Process m_runningProcess
+        +selectNextProcess(Process*, QString*) bool
+        +dispatchNextProcess() DispatchResult
+        +evaluateAging(QDateTime, int*) int
+        +runScheduler() void
+        +performanceMetrics() PerformanceMetrics
     }
 
     class AgingEngine {
-        -int m_waitThreshold
-        -int m_priorityIncrement
-        -int m_maxPriorityCap
-        -bool m_agingEnabled
-        +applyAging(ReadyQueue&) int
-        +setAgingParameters(int, int, int) void
-        +isAgingEnabled() bool
+        -QTimer* m_timer
+        -int m_intervalSeconds
+        -bool m_isRunning
+        +evaluateAging(ReadyQueue&, QDateTime, int*) int
+        +setIntervalSeconds(int, QString*) bool
+        +start(QString*) bool
+        +stop() void
+        +isRunning() bool
     }
 
     class ResourceManager {
-        -std::map~int, Runway~ m_runways
+        -QMap~int, Runway~ m_runways
         -mutable std::mutex m_resourceMutex
-        +requestRunway(int runwayId, int flightId) bool
-        +releaseRunway(int runwayId) bool
-        +isRunwayFree(int runwayId) bool
-        +getRunwayStatus(int runwayId) RunwayStatus
+        +isRunwayAvailable(int) bool
+        +requestAllocation(int, int) bool
+        +confirmAllocationUnlocked(int, int) void
+        +rollbackAllocationUnlocked(int, int) void
+        +releaseRunway(int) bool
     }
 
     class DatabaseManager {
-        -QSqlDatabase m_db
-        -bool m_isConnected
-        +getInstance() DatabaseManager&
-        +beginTransaction() bool
-        +commitTransaction() bool
-        +rollbackTransaction() bool
+        -QString m_host
+        -int m_port
+        -QString m_databaseName
+        -bool m_connected
+        +instance() DatabaseManager*
+        +connectToDatabase(QString*) bool
+        +disconnectFromDatabase() void
         +isConnected() bool
+        +database() QSqlDatabase
     }
 
     class ApplicationService {
-        -Scheduler m_scheduler
-        -AgingEngine m_agingEngine
-        -ResourceManager m_resourceManager
-        -DatabaseManager& m_dbManager
-        +dispatchNextProcess() bool
-        +allocateRunwayWithTransaction(int, int) bool
-        +releaseRunwayWithTransaction(int) bool
-        +declareFlightEmergency(int) bool
-        +getDashboardMetrics() DashboardStats
+        -Scheduler* m_scheduler
+        -ResourceManager* m_resourceManager
+        -Session m_session
+        +allocateRunway(int, int, QString*) AllocationResult
+        +releaseRunway(int, QString*) bool
+        +declareFlightEmergency(int, bool, QString*) bool
+        +scheduleAndAllocateNext(QString*) ScheduleAndAllocateResult
+        +getDashboardMetrics(QString*) DashboardMetrics
     }
 
     class Flight {
-        -int m_id
-        -QString m_flightNumber
-        -int m_aircraftId
-        -FlightStatus m_status
-        -bool m_isEmergency
-        -int m_priority
+        +int id
+        +QString flightNumber
+        +QString airline
+        +int aircraftId
+        +FlightType flightType
+        +int priority
+        +bool isEmergency
+        +OperationalStatus status
     }
 
     class Runway {
-        -int m_id
-        -QString m_name
-        -int m_length
-        -RunwayStatus m_status
-        -int m_currentFlightId
+        +int id
+        +QString runwayNumber
+        +RunwayType runwayType
+        +RunwayStatus status
+        +int currentFlightId
+    }
+
+    class Session {
+        -int m_userId
+        -QString m_username
+        -QString m_role
+        +hasPermission(QString) bool
+        +isAdmin() bool
+        +isATC() bool
+        +isOperator() bool
     }
 
     ApplicationService o-- Scheduler
-    ApplicationService o-- AgingEngine
     ApplicationService o-- ResourceManager
-    ApplicationService --> DatabaseManager
+    ApplicationService o-- Session
+    ApplicationService ..> DatabaseManager : queries
     Scheduler o-- ReadyQueue
-    ReadyQueue *-- Process
-    ResourceManager *-- Runway
-    Process ..> Flight : references
+    Scheduler o-- AgingEngine
+    ReadyQueue o-- Process
+    ResourceManager o-- Runway
+    Process ..> Flight : references PID

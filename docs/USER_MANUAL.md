@@ -15,25 +15,25 @@ Launch the graphical executable from your build directory:
 ```
 Upon launch, the application displays the **Login View**.
 
-### 1.2 User Roles & Credentials
-Sign in using pre-configured user credentials matching your desired access level:
+### 1.2 User Roles & Operational Permissions
+Sign in using configured user credentials matching your desired access level:
 
-| Role | Username | Password | Permitted Actions |
-|:---|:---|:---|:---|
-| **Administrator** | `admin` | `admin123` | Full access: User management, flight scheduling, runway maintenance, starvation simulation, database transactions. |
-| **Air Traffic Controller (ATC)** | `atc_operator` | `atc123` | Operational access: Flight management, emergency declarations, process dispatch, scheduling queue control. |
-| **Airport Operator** | `runway_ops` | `ops123` | Infrastructure access: Aircraft fleet registry, runway status toggle (Free/Maintenance), resource monitoring. |
+| Role | Default Username | Permitted Actions |
+|:---|:---|:---|
+| **Administrator** | `admin` | Full system access: User management, scheduling management, fleet administration, transaction monitoring. |
+| **Air Traffic Controller (ATC)** | `atc_operator` | Operational control: Flight management, emergency declarations, process dispatching, runway allocation. |
+| **Airport Operator** | `runway_ops` | Infrastructure maintenance: Aircraft fleet registry, runway status toggle (`Available` / `Maintenance`), contention demonstration. |
 
 ---
 
 ## 2. Navigation Overview
 
-Once logged in, the **Main Window** opens. Navigation between operational modules is handled via the navigation bar on the left:
+Once logged in, the **Main Window** opens. Navigation between operational modules is handled via the navigation sidebar on the left:
 
-- 📊 **Dashboard:** High-level operational metrics, active queue sizes, runway utilization, and transaction counters.
+- 📊 **Dashboard:** Real-time operational overview, queue sizes, runway utilization, and recent audit logs.
 - ✈️ **Flights:** Live flight table, arrival/departure records, flight creation, and emergency status toggles.
-- 🛩️ **Aircraft:** Fleet registry, aircraft type specifications, passenger capacity, and wake turbulence classifications.
-- 🛫 **Runways:** Infrastructure runway status, length/surface specifications, maintenance toggle, and concurrency demo.
+- 🛩️ **Aircraft:** Fleet registry, aircraft type specifications, passenger capacity, and maintenance status.
+- 🛫 **Runways:** Infrastructure runway status, operational type (`Landing`, `Takeoff`, `Both`), maintenance toggle, and concurrency demo.
 - ⏱️ **Scheduling & OS Simulation:** Process Ready Queue, priority scheduling dispatch, Priority Aging engine, and Starvation demonstration.
 
 ---
@@ -42,82 +42,87 @@ Once logged in, the **Main Window** opens. Navigation between operational module
 
 ### 3.1 System Dashboard
 The Dashboard provides an aggregated, real-time snapshot of the airport and simulation environment:
-- **Flight Statistics:** Total registered flights, scheduled vs. landed/departed counts, active emergency count.
-- **Runway Status Bar:** Visual indicators of Free (Green), Occupied (Red), and Maintenance (Yellow) runways.
-- **OS Scheduling Metrics:** Current Ready Queue depth, active running process, average Turnaround Time (TAT), and average Waiting Time (WT).
-- **DBMS Transaction Counter:** Successful commits, aborts/rollbacks, and transaction throughput.
+- **Flight Statistics:** Total registered flights, scheduled counts, active flights, and active emergency alert cards.
+- **Runway Status Bar:** Visual indicators of Available (Green), Occupied (Blue), and Maintenance (Red) runways with a dynamic utilization progress bar.
+- **OS Scheduling Metrics:** Current Ready Queue depth, active running process, average Turnaround Time ($\overline{TAT}$), and average Waiting Time ($\overline{WT}$).
+- **Audit History:** Real-time log table showing the 10 most recent persistent database transactions with user attribution and status.
 
 ---
 
 ### 3.2 Flight Management
-The Flights tab allows operators to track and schedule aircraft movements.
-1. **Filter Flights:** Use the dropdown to filter by `All Flights`, `Arrivals Only`, or `Departures Only`.
-2. **Add a Flight:**
-   - Click **"Register Flight"**.
-   - Input Flight Number (e.g., `AI-302`), Select Aircraft Registration, Origin/Destination, Scheduled Time, and Base Priority (1 = Low to 5 = Critical).
+The Flights tab allows operators to track and schedule aircraft movements:
+1. **Filter Flights:** Use the dropdowns to filter by `All Flights`, `Arrivals Only`, `Departures Only`, or operational status (`Scheduled`, `Taxiing`, `Cleared`, `Landed`, `Departed`, `Cancelled`).
+2. **Add a Flight (ATC Only):**
+   - Click **"Add Flight"** to open `FlightDialog`.
+   - Input Flight Number (e.g., `AI-302`), Select Aircraft Registration, Origin/Destination, Scheduled Time, and Base Priority (1 = Highest to 5 = Lowest).
    - Click **"Submit"** to persist to MySQL.
-3. **Declare In-Flight Emergency:**
-   - Select an in-flight arrival from the table.
+3. **Declare In-Flight Emergency (ATC Only):**
+   - Select a flight from the table.
    - Click **"Declare Emergency"**.
-   - The flight's priority immediately escalates to **Level 5 (Emergency)**, moving it to the head of the CPU scheduling queue.
+   - The flight's effective priority immediately escalates to **Priority 1 (Emergency Highest Priority)**, moving it to the head of the Ready Queue for the next runway allocation.
 
 ---
 
 ### 3.3 Runway Infrastructure & Contention Control
-The Runways tab manages airport strip availability and demonstrates hardware mutual exclusion.
-1. **Inspect Runways:** View Runway IDs (e.g., `RWY-09L`, `RWY-27R`), length in meters, surface type, and current status.
-2. **Toggle Maintenance:**
+The Runways tab manages runway strip availability and demonstrates hardware mutual exclusion:
+1. **Inspect Runways:** View Runway Number (e.g., `09L`, `27R`), Runway Type (`Landing`, `Takeoff`, `Both`), and current status (`Available`, `Occupied`, `Maintenance`).
+2. **Toggle Maintenance (Airport Operator Only):**
    - Select a runway.
-   - Click **"Set Maintenance"** to transition the runway into `MAINTENANCE` state. The scheduler will reject any flight assignments to this runway until restored to `FREE`.
+   - Click **"Toggle Maintenance"** to transition the runway into `Maintenance` state. The scheduler and allocation engine will reject any flight assignments to this runway until restored to `Available`.
 3. **Run Multi-threaded Contention Demonstration:**
+   - Locate the **Concurrent Contention Demo** panel.
+   - Select a target runway and configure competing worker threads (default 3).
    - Click **"Run Thread Contention Demo"**.
-   - Spawns 4 concurrent C++ threads representing separate aircraft attempting to acquire the same runway simultaneously.
+   - Spawns concurrent C++ threads representing separate aircraft attempting to acquire the same runway simultaneously.
    - The log console proves that mutual exclusion (`std::mutex`) allows exactly **one** aircraft to acquire the runway at any instant while other threads wait safely.
 
 ---
 
 ### 3.4 Process Scheduling & Priority Aging Simulation
-The Scheduling tab demonstrates CPU scheduling concepts mapped to airport operations.
+The Scheduling tab demonstrates Operating System process scheduling concepts mapped to airport operations.
 
 #### A. Viewing the Ready Queue
 - The **Ready Queue Table** shows all simulated processes waiting for runway dispatch.
-- Columns display Process ID, Flight ID, Effective Priority, Burst Time, Waiting Time, and Aging Level.
+- Columns display Flight ID (PID), Arrival Time, Base Priority, Effective Priority (1=Highest...5=Lowest), Service Time, Waiting Time, and Aging Level.
 
 #### B. Stepping Process Dispatch
-- Click **"Dispatch Next Process"**.
-- The non-preemptive scheduler dispatches the highest-priority process from the Ready Queue to the runway.
-- State transitions from `READY` -> `RUNNING` -> `COMPLETED`.
+- Click **"Dispatch Next Process"** (or **"Schedule & Allocate Next"**).
+- The non-preemptive scheduler evaluates the Ready Queue and dispatches the highest-priority process (lowest numerical effective priority, broken by earlier arrival time).
+- State transitions from `Ready` $\to$ `Running` $\to$ `Completed`.
 
 #### C. Configuring Priority Aging
 Prevent starvation of low-priority commercial flights during heavy traffic:
 1. Locate the **Priority Aging Configuration** panel.
-2. Set **Wait Time Threshold** (e.g., `30 seconds` or `3 dispatch ticks`).
-3. Set **Aging Increment** (`+1 Priority level`).
-4. Set **Maximum Boost Cap** (e.g., `Priority 4`).
-5. Click **"Apply Aging Settings"**.
-6. When aging is active, processes that wait longer than the threshold automatically receive priority upgrades until dispatched.
+2. Set the **Aging Interval** spinbox (e.g., `30 seconds`).
+3. Click **"Start Aging"**.
+4. The background `AgingEngine` continuously monitors waiting processes. For every completed interval in `Ready` state, effective priority improves by decrementing its numerical value:
+   $$\text{effectivePriority} = \max(1, \text{basePriority} - \text{agingLevel})$$
+5. The queue dynamically re-sorts to reflect improved priorities.
 
-#### D. Starvation Demonstration
-1. Click **"Run Starvation Simulation"**.
-2. The simulation creates a low-priority cargo flight (Priority 1) followed by a continuous stream of incoming high-priority flights (Priority 4).
-3. **Phase 1 (Without Aging):** The low-priority flight is continuously bypassed, illustrating CPU starvation (waiting time indefinitely increases).
-4. **Phase 2 (With Aging):** With aging enabled, the low-priority flight's priority steadily rises to Priority 2, 3, and 4, ensuring bounded waiting time and successful execution.
-5. The window displays a comparison chart and summary report.
+#### D. Starvation Demonstration (Day 18 Tab)
+1. Switch to the **"Starvation Demonstration"** tab.
+2. Click **"Run Without Aging"**:
+   - Simulates a continuous stream of high-priority flights (Priority 2) bypassing an initial low-priority flight (Priority 4).
+   - The low-priority flight's waiting time grows indefinitely, visually illustrating process starvation.
+3. Click **"Run With Aging"**:
+   - The same arrival pattern executes, but the aging engine gradually improves the low-priority flight's priority to 3, 2, and 1.
+   - The low-priority flight is successfully dispatched, bounding waiting time and proving starvation elimination.
+4. The comparison table displays side-by-side turnaround and waiting time metrics.
 
 ---
 
 ### 3.5 Database Transactions & ACID Verification
 SmartATC guarantees complete atomicity during runway assignments:
-1. When a runway is assigned, the system opens a MySQL transaction:
-   - Sets flight state to `LANDED` or `DEPARTED`.
-   - Inserts record into `runway_assignments`.
-   - Updates runway status to `OCCUPIED`.
-   - Updates process queue state to `COMPLETED`.
-2. If any step fails (e.g., simulated network fault or runway already reserved), the entire transaction is rolled back, preventing orphaned runway assignments.
+1. When a runway is assigned via `allocateRunway`:
+   - A MySQL transaction begins (`db.transaction()`).
+   - Pessimistic row locks (`SELECT ... FOR UPDATE`) secure the runway, flight, and active assignment records.
+   - Updates insert `runway_assignments`, set runway status to `Occupied`, advance flight status to `Cleared`, and insert a committed audit record into `operation_logs`.
+   - `db.commit()` commits all mutations atomically.
+2. If any step fails (e.g., conflict or simulated failure), `db.rollback()` reverts all database changes, and `ResourceManager` restores in-memory state.
 
 ---
 
 ## 4. Logging Out
 To switch roles or close session:
-1. Click the **"Log Out"** button in the lower-left corner of the window.
+1. Click the **"Logout"** button in the top-right header bar.
 2. The active session is terminated, and the application returns to the **Login View**.

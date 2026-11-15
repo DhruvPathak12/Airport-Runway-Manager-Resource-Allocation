@@ -91,6 +91,6 @@ During live integration testing against MySQL 8.0.46, four defects were discover
 
 In addition to automated CTest execution, the complete application was verified via standalone execution:
 - **Deployment Script:** Executed `scripts/deploy_runtime.ps1`, deploying 12 required Qt6, MinGW, and MySQL client libraries into `build/`.
-- **Standalone Launch:** Verified `SmartATC.exe` launches without missing dependency errors.
-- **Authentication Flow:** Verified login for `admin`, `atc_controller`, and `ops_user`.
+- **Standalone Launch:** Verified `smartatc_gui.exe` launches without missing dependency errors.
+- **Authentication Flow:** Verified login for `admin`, `atc_operator`, and `runway_ops`.
 - **Navigation Verification:** Confirmed that sidebar items route correctly and role permissions dynamically restrict editing buttons.

@@ -10,34 +10,32 @@ graph TD
     end
 
     subgraph Service_Layer ["Application & Orchestration Layer"]
-        AppService["ApplicationService<br/>(Facade, Orchestration, RBAC)"]
-        AuthService["AuthService<br/>(Authentication, Session, SHA-256)"]
+        AppService["ApplicationService<br/>(Central Facade, RBAC, Business Logic)"]
+        Session["Session<br/>(RBAC Permissions & Active User)"]
+        PassUtils["PasswordUtils<br/>(SHA-256 Digest Verification)"]
     end
 
-    subgraph Core_OS_Simulation ["Core OS & Concurrency Engine (In-Memory)"]
+    subgraph Core_OS_Simulation ["Core OS Simulation & Concurrency (In-Memory)"]
         Scheduler["Scheduler<br/>(Non-Preemptive Priority)"]
-        ReadyQueue["ReadyQueue<br/>(Priority-Ordered Queue)"]
-        AgingEngine["AgingEngine<br/>(Starvation Prevention)"]
+        ReadyQueue["ReadyQueue<br/>(Thread-Safe Process Queue)"]
+        AgingEngine["AgingEngine<br/>(Priority Aging Timer)"]
+        StarvationSim["StarvationSimulation<br/>(Starvation Prevention Demo)"]
         ResourceManager["ResourceManager<br/>(std::mutex, ScopedResourceLock)"]
-        Threads["ConcurrentAllocationDemo<br/>(std::thread Workers)"]
+        Threads["ConcurrentAllocationDemo<br/>(std::thread Worker Contention)"]
     end
 
-    subgraph Data_Access_Layer ["Data Access Layer (DAO Pattern)"]
-        DBMgr["DatabaseManager (Connection Pool & Transaction Manager)"]
-        UserDAO["UserDao"]
-        FlightDAO["FlightDao"]
-        AircraftDAO["AircraftDao"]
-        RunwayDAO["RunwayDao"]
-        QueueDAO["SchedulingQueueDao"]
-        AssignDAO["RunwayAssignmentDao"]
-        LogDAO["OperationLogDao"]
+    subgraph Data_Access_Layer ["Database Management & Persistence"]
+        DBMgr["DatabaseManager<br/>(Connection Lifecycle, db.conf, Health Check)"]
+        QSql["Qt SQL / QMYSQL<br/>(Prepared Statements, Transaction Boundaries)"]
     end
 
-    subgraph Database_Layer ["Storage & Persistence Engine"]
-        MySQL[("MySQL 8.0 Server (InnoDB Engine)<br/>ACID Transactions, Row Locks")]
+    subgraph Database_Layer ["Relational Storage Engine"]
+        MySQL[("MySQL 8.0 Server (InnoDB Engine)<br/>8 Normalized Tables, Row-Level Locking")]
     end
 
-    Presentation_Layer --> Service_Layer
-    Service_Layer --> Core_OS_Simulation
-    Service_Layer --> Data_Access_Layer
+    Presentation_Layer --> AppService
+    AppService --> Session
+    AppService --> PassUtils
+    AppService --> Core_OS_Simulation
+    AppService --> Data_Access_Layer
     Data_Access_Layer --> Database_Layer

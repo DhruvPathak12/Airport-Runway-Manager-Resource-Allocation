@@ -1,98 +1,91 @@
 erDiagram
-    roles ||--o{ users : "assigned to"
-    users ||--o{ operation_logs : "performed by"
+    roles ||--o{ users : "assigns"
+    users ||--o{ operation_logs : "records"
+    users ||--o{ runway_assignments : "assigns"
     aircraft ||--o{ flights : "operates"
-    flights ||--o{ scheduling_queue : "queued in"
-    flights ||--o{ runway_assignments : "allocated to"
-    runways ||--o{ runway_assignments : "serviced on"
+    flights ||--o| scheduling_queue : "enqueued in (1:0..1)"
+    flights ||--o{ runway_assignments : "assigned to"
+    runways ||--o{ runway_assignments : "allocated to"
+    flights ||--o{ operation_logs : "references"
+    runways ||--o{ operation_logs : "references"
 
     roles {
-        int id PK
-        string role_name UK "ADMIN, ATC, AIRPORT_OPERATOR"
-        string description
-        datetime created_at
+        int role_id PK
+        varchar role_name UK "Admin, ATC, Airport Operator"
     }
 
     users {
-        int id PK
-        string username UK
-        string password_hash "SHA-256 Hash"
-        string full_name
-        string email
+        int user_id PK
+        varchar username UK
+        char password_hash "SHA-256 (64 chars)"
         int role_id FK
+        varchar full_name
+        enum status "Active, Inactive, Suspended"
         datetime created_at
-        datetime updated_at
     }
 
     aircraft {
-        int id PK
-        string model
-        string registration_number UK
-        int capacity
-        string manufacturer
-        string wake_category "HEAVY, MEDIUM, LIGHT"
-        datetime created_at
+        int aircraft_id PK
+        varchar registration_number UK "e.g., VT-ANB"
+        varchar aircraft_type
+        smallint capacity "CHECK capacity >= 0"
+        enum status "Active, Maintenance, Retired"
     }
 
     flights {
-        int id PK
-        string flight_number UK
-        int aircraft_id FK
-        string flight_type "ARRIVAL, DEPARTURE"
-        string origin
-        string destination
+        int flight_id PK
+        varchar flight_number "Reused across dates"
+        varchar airline
+        int aircraft_id FK "Nullable"
+        varchar source
+        varchar destination
+        enum flight_type "Arrival, Departure"
         datetime scheduled_time
-        datetime actual_time
-        string status "SCHEDULED, DELAYED, LANDED, DEPARTED, CANCELLED"
-        boolean is_emergency "0=Normal, 1=Distress"
-        int priority "1 (Low) to 5 (Emergency)"
+        tinyint priority "CHECK 1 (Highest) to 5 (Lowest)"
+        tinyint is_emergency "0=Normal, 1=Emergency"
+        enum operational_status "Scheduled, Taxiing, Cleared, Landed, Departed, Cancelled"
         datetime created_at
     }
 
     runways {
-        int id PK
-        string runway_identifier UK "e.g., RWY-09L"
-        int length_meters
-        string surface_type "ASPHALT, CONCRETE"
-        string status "FREE, OCCUPIED, MAINTENANCE, RESERVED"
-        int current_flight_id FK "Nullable"
-        datetime created_at
-        datetime updated_at
+        int runway_id PK
+        varchar runway_number UK "e.g., 09L, 27R"
+        enum runway_type "Landing, Takeoff, Both"
+        enum status "Available, Occupied, Maintenance"
     }
 
     scheduling_queue {
-        int id PK
-        int flight_id FK
-        string state "READY, RUNNING, BLOCKED, COMPLETED"
-        int base_priority
-        int effective_priority
-        int arrival_time
-        int burst_time
-        int waiting_time
-        int turnaround_time
-        int completion_time
-        int aging_level "Accumulated promotions"
-        datetime created_at
-        datetime updated_at
+        int queue_id PK
+        int flight_id UK, FK "1:0..1 mapping"
+        datetime arrival_time
+        datetime ready_since "Continuous ready timestamp"
+        tinyint base_priority "CHECK 1 to 5"
+        tinyint effective_priority "CHECK 1 to 5"
+        tinyint aging_level "Accrued aging intervals"
+        smallint service_time "Burst duration in seconds"
+        smallint waiting_time "Computed waiting seconds"
+        smallint turnaround_time "Computed TAT seconds"
+        datetime completion_time
+        enum process_state "Ready, Running, Completed, Blocked"
     }
 
     runway_assignments {
-        int id PK
+        int assignment_id PK
         int flight_id FK
         int runway_id FK
+        int assigned_by FK "Nullable user_id"
         datetime assigned_at
         datetime released_at "Nullable"
-        string operation_type "TAKEOFF, LANDING"
-        string status "ACTIVE, RELEASED"
+        enum status "Active, Released, Cancelled"
     }
 
     operation_logs {
-        int id PK
+        int log_id PK
         int user_id FK "Nullable"
-        string action
-        string entity_name
-        int entity_id "Nullable"
-        string details
-        string status "SUCCESS, FAILURE"
+        varchar operation_type "e.g., RUNWAY_ASSIGN"
+        int flight_id FK "Nullable"
+        int runway_id FK "Nullable"
+        enum transaction_status "Committed, Rolled Back, N/A"
+        text message
         datetime created_at
     }

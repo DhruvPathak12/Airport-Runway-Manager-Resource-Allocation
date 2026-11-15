@@ -1,31 +1,30 @@
 flowchart TD
-    Start([Process Arrival / Scheduling Tick]) --> EvalEmergency{Is In-Flight Emergency Declared?}
+    Start([Process Arrival / Scheduling Cycle]) --> EvalEmergency{Is In-Flight Emergency Declared?}
     
-    EvalEmergency -- Yes --> SetPriority5[Set Effective Priority = 5<br/>Emergency Maximum]
-    SetPriority5 --> PushQueue[Insert Process into ReadyQueue]
+    EvalEmergency -- Yes --> SetPriority1[Set Effective Priority = 1<br/>Emergency Highest Priority]
+    SetPriority1 --> PushQueue[Enqueue Process in ReadyQueue]
 
-    EvalEmergency -- No --> CheckAging{Is Priority Aging Active?}
-    CheckAging -- Yes --> CalcWait[Calculate Waiting Time = CurrentTime - ArrivalTime]
-    CalcWait --> CheckThreshold{WaitingTime >= AgingThreshold?}
-    CheckThreshold -- Yes --> IncrementPriority[EffectivePriority = min MaxCap, BasePriority + Boost]
-    CheckThreshold -- No --> UseBasePriority[EffectivePriority = BasePriority]
+    EvalEmergency -- No --> CheckAging{Is Priority Aging Evaluated?}
+    CheckAging -- Yes --> CalcWait[Compute continuous READY wait time: now - readySince]
+    CalcWait --> CheckIntervals{Completed Aging Intervals > 0?}
+    CheckIntervals -- Yes --> DecrementPriority[Improve Priority: effectivePriority = max 1, basePriority - agingLevel]
+    CheckIntervals -- No --> UseBasePriority[effectivePriority = basePriority]
     CheckAging -- No --> UseBasePriority
     
-    IncrementPriority --> PushQueue
+    DecrementPriority --> PushQueue
     UseBasePriority --> PushQueue
 
-    PushQueue --> SortQueue[Sort ReadyQueue by: <br/>1. Effective Priority DESC <br/>2. Arrival Time ASC (FCFS) <br/>3. Flight ID ASC]
+    PushQueue --> ScanQueue[Evaluate Candidate Process by Deterministic Order:<br/>1. Effective Priority ASC Lowest Number = Highest Priority<br/>2. Arrival Time ASC FCFS<br/>3. Flight ID ASC Stable PID]
 
-    SortQueue --> DispatchRequest{Scheduler Dispatches Next Process?}
-    DispatchRequest -- No --> WaitTick([Wait for Next Tick / Event])
-    
-    DispatchRequest -- Yes --> PopHead[Pop Candidate Process from Queue Head]
-    PopHead --> CheckRunway{Compatible FREE Runway Available?}
+    ScanQueue --> CheckRunning{Is a Process Already RUNNING?}
+    CheckRunning -- Yes --> BusyWait([Non-Preemptive: Running Process Retains Runway])
 
-    CheckRunway -- No --> ReinsertHead[Push Candidate Back to Head of ReadyQueue]
-    ReinsertHead --> WaitRunway([Wait for Runway Release])
+    CheckRunning -- No --> PopHead[Select Candidate Process from ReadyQueue]
+    PopHead --> CheckRunway{Compatible Available Runway Found?}
 
-    CheckRunway -- Yes --> OccupyRunway[Transition Process to RUNNING<br/>Occupy Runway Exclusively]
-    OccupyRunway --> ExecBurst[Execute Burst Time Duration Non-Preemptively]
-    ExecBurst --> CompleteProc[Transition Process to COMPLETED<br/>Release Runway & Record Metrics]
-    CompleteProc --> Done([Process Finished])
+    CheckRunway -- No --> RetainQueue([No Runway Available: Candidate Remains in READY])
+
+    CheckRunway -- Yes --> OccupyRunway[Transition Process to RUNNING<br/>Allocate Runway Resource Exclusively]
+    OccupyRunway --> ServiceDuration[Hold Runway Non-Preemptively for serviceTime]
+    ServiceDuration --> CompleteProc[Release Runway Resource<br/>Transition to COMPLETED & Record CT, TAT, WT Metrics]
+    CompleteProc --> Done([Process Completed])

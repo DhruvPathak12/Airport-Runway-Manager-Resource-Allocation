@@ -3,60 +3,59 @@ sequenceDiagram
     actor ATC as ATC Controller
     participant GUI as SchedulingView (GUI)
     participant Svc as ApplicationService
-    participant Aging as AgingEngine
-    participant Sched as Scheduler / ReadyQueue
+    participant Sched as Scheduler
+    participant RQ as ReadyQueue
     participant Res as ResourceManager (std::mutex)
-    participant DB as DatabaseManager
-    participant MySQL as MySQL 8 (InnoDB)
+    participant DB as MySQL (InnoDB)
 
-    ATC->>GUI: Click "Dispatch Next Process"
-    GUI->>Svc: dispatchNextProcess()
+    ATC->>GUI: Click "Schedule & Allocate Next"
+    GUI->>Svc: scheduleAndAllocateNext()
     activate Svc
 
-    Svc->>Aging: applyAging(readyQueue)
-    activate Aging
-    Aging-->>Svc: agingAppliedCount
-    deactivate Aging
-
-    Svc->>Sched: scheduleNext()
+    Svc->>Sched: selectNextProcess()
     activate Sched
-    Sched-->>Svc: Candidate Process (e.g., Flight 101, Priority 4)
+    Sched->>RQ: Scan lowest effectivePriority ASC (1=Highest), arrivalTime ASC
+    RQ-->>Sched: Candidate Process (e.g., Flight 101, Priority 3)
+    Sched-->>Svc: Candidate Process selected
     deactivate Sched
 
-    Svc->>Res: findCompatibleRunway(Flight 101)
-    activate Res
-    Res-->>Svc: Runway 1 (RWY-09L) Available
-    deactivate Res
+    Svc->>Svc: findCompatibleAvailableRunway(Flight 101)
+    Svc-->>Svc: Runway 1 ('09L', Type: Both) Available
 
+    Svc->>Sched: dispatchNextProcess()
+    activate Sched
+    Sched->>RQ: dequeue candidate
+    Sched-->>Svc: Process transitioned to Running
+    deactivate Sched
+
+    Svc->>Svc: allocateRunway(Runway 1, Flight 101)
+    activate Svc
     Svc->>Res: ScopedResourceLock lock(m_resourceMutex)
     activate Res
     Note over Res: Critical Section Protected by std::mutex
 
-    Svc->>DB: beginTransaction()
-    activate DB
-    DB->>MySQL: START TRANSACTION
-    MySQL-->>DB: OK
+    Svc->>DB: db.transaction() (START TRANSACTION)
+    
+    Svc->>DB: SELECT status FROM runways WHERE runway_id = 1 FOR UPDATE
+    DB-->>Svc: status = 'Available'
+    Svc->>DB: SELECT assignment_id FROM runway_assignments WHERE runway_id = 1 AND status = 'Active' FOR UPDATE
+    DB-->>Svc: 0 rows (No active assignment)
+    Svc->>DB: SELECT operational_status FROM flights WHERE flight_id = 101 FOR UPDATE
+    DB-->>Svc: status = 'Scheduled' (Eligible)
 
-    Svc->>DB: executePessimisticLock(Runway 1)
-    DB->>MySQL: SELECT status FROM runways WHERE id=1 FOR UPDATE
-    MySQL-->>DB: status = 'FREE'
+    Svc->>DB: INSERT INTO runway_assignments (flight_id, runway_id, status) VALUES (101, 1, 'Active')
+    Svc->>DB: UPDATE runways SET status = 'Occupied' WHERE runway_id = 1
+    Svc->>DB: UPDATE flights SET operational_status = 'Cleared' WHERE flight_id = 101
+    Svc->>DB: INSERT INTO operation_logs (..., 'RUNWAY_ASSIGN', 'Committed', ...)
 
-    Svc->>DB: executeAllocationStatements(Flight 101, Runway 1)
-    DB->>MySQL: UPDATE flights SET status='LANDED' WHERE id=101
-    DB->>MySQL: INSERT INTO runway_assignments ...
-    DB->>MySQL: UPDATE runways SET status='OCCUPIED', current_flight_id=101 WHERE id=1
-    DB->>MySQL: UPDATE scheduling_queue SET state='COMPLETED' WHERE flight_id=101
-    MySQL-->>DB: All statements OK
+    Svc->>DB: db.commit()
+    DB-->>Svc: Transaction Committed
 
-    Svc->>DB: commitTransaction()
-    DB->>MySQL: COMMIT
-    MySQL-->>DB: OK
-    deactivate DB
-
-    Svc->>Res: updateMemoryState(Runway 1, OCCUPIED)
+    Svc->>Res: confirmAllocationUnlocked(Runway 1, Flight 101)
     deactivate Res
-    Note over Res: Critical Section Exited, Mutex Released
-
-    Svc-->>GUI: Result (Success, Flight Dispatched)
+    Note over Res: Mutex Released, In-Memory Runway Marked Occupied
     deactivate Svc
-    GUI->>ATC: Display Updated Queue & Runway Status
+
+    Svc-->>GUI: ScheduleAndAllocateResult (Success)
+    deactivate Svc
+    GUI->>ATC: Render Updated Queue and Runway Allocation

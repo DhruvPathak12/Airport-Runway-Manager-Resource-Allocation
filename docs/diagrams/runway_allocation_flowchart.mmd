@@ -1,38 +1,48 @@
 flowchart TD
-    Req([Runway Allocation Request: Flight F, Aircraft A]) --> LockRes[Acquire ResourceManager std::mutex]
-    
-    LockRes --> FilterRunways[Query All Runways Registered in Airport]
-    FilterRunways --> LoopRunways{Iterate Each Runway}
+    Req([Runway Allocation Request: Flight F, Runway R]) --> CheckAuth{Session Authorized for RunwayAllocation?}
+    CheckAuth -- No --> RejectAuth([Return: Unauthorized])
+    CheckAuth -- Yes --> LockRes[Acquire ResourceManager ScopedResourceLock std::mutex]
 
-    LoopRunways -- Done / None Valid --> UnlockFail[Release std::mutex]
-    UnlockFail --> RejectAlloc([Return: Allocation Failed - No Compatible Runway])
+    LockRes --> CheckMemStatus{Is Runway Available in Memory?}
+    CheckMemStatus -- No --> UnlockReject([Release Mutex: Return Conflict])
 
-    LoopRunways -- Check Next Runway R --> CheckStatus{Status == FREE?}
-    CheckStatus -- No (OCCUPIED/MAINTENANCE) --> LoopRunways
-    
-    CheckStatus -- Yes --> CheckLength{Length >= Required for Wake Category?}
-    CheckLength -- No --> LoopRunways
+    CheckMemStatus -- Yes --> StartTx[Start Database Transaction: db.transaction]
+    StartTx --> LockRw[SELECT runway_number, runway_type, status FROM runways WHERE runway_id = ? FOR UPDATE]
+    LockRw --> CheckRwAvail{Runway Exists & Status == 'Available'?}
+    CheckRwAvail -- No --> AbortTx[Rollback Transaction]
 
-    CheckLength -- Yes --> CheckSurface{Surface Compatible with Aircraft?}
-    CheckSurface -- No --> LoopRunways
+    CheckRwAvail -- Yes --> LockRwAssign[SELECT assignment_id FROM runway_assignments WHERE runway_id = ? AND status = 'Active' FOR UPDATE]
+    LockRwAssign --> CheckActiveRw{Any Active Assignment on Runway?}
+    CheckActiveRw -- Yes --> AbortTx
 
-    CheckSurface -- Yes --> SelectRunway[Select Candidate Runway R]
-    SelectRunway --> AtomicLock[Mark Runway R as RESERVED in Memory]
-    AtomicLock --> OpenTx[Start Database Transaction]
+    CheckActiveRw -- No --> LockFlight[SELECT flight_number, flight_type, operational_status FROM flights WHERE flight_id = ? FOR UPDATE]
+    LockFlight --> CheckFlightElig{Flight Not Terminal & Type Compatible with Runway?}
+    CheckFlightElig -- No --> AbortTx
 
-    OpenTx --> DBRowLock[SELECT status FROM runways WHERE id=R.id FOR UPDATE]
-    DBRowLock --> DBStatusCheck{DB Status == 'FREE'?}
+    CheckFlightElig -- Yes --> LockFltAssign[SELECT assignment_id FROM runway_assignments WHERE flight_id = ? AND status = 'Active' FOR UPDATE]
+    LockFltAssign --> CheckActiveFlt{Flight Already Has Active Assignment?}
+    CheckActiveFlt -- Yes --> AbortTx
 
-    DBStatusCheck -- No --> AbortTx[Rollback Database Transaction]
-    AbortTx --> ResetMem[Revert Runway R to FREE in Memory]
-    ResetMem --> LoopRunways
+    CheckActiveFlt -- No --> CheckQueue[SELECT process_state FROM scheduling_queue WHERE flight_id = ? FOR UPDATE]
+    CheckQueue --> CheckProcState{Process Not Completed?}
+    CheckProcState -- No --> AbortTx
 
-    DBStatusCheck -- Yes --> ExecStatements[Execute Allocation SQL Sequence:<br/>1. UPDATE flights SET status<br/>2. INSERT INTO runway_assignments<br/>3. UPDATE runways SET status='OCCUPIED'<br/>4. UPDATE scheduling_queue]
+    CheckProcState -- Yes --> Step1[1. INSERT INTO runway_assignments status='Active']
+    Step1 --> Step2[2. UPDATE runways SET status='Occupied']
+    Step2 --> Step3[3. UPDATE flights SET operational_status='Cleared']
+    Step3 --> Step4[4. INSERT INTO operation_logs transaction_status='Committed']
 
-    ExecStatements --> CheckSQLOk{All SQL Statements Succeeded?}
-    CheckSQLOk -- No --> AbortTx
-    
-    CheckSQLOk -- Yes --> CommitTx[COMMIT Database Transaction]
-    CommitTx --> FinalizeMem[Mark Runway R as OCCUPIED in Memory]
-    FinalizeMem --> UnlockSuccess[Release std::mutex]
-    UnlockSuccess --> GrantAlloc([Return: Allocation Succeeded])
+    Step4 --> CheckSql{All Mutations Succeeded?}
+    CheckSql -- No --> AbortTx
+
+    CheckSql -- Yes --> CommitTx[COMMIT Transaction: db.commit]
+    CommitTx --> CheckCommit{Commit Succeeded?}
+    CheckCommit -- No --> AbortTx
+
+    CheckCommit -- Yes --> MemConfirm[ResourceManager: confirmAllocationUnlocked<br/>Update In-Memory Status to Occupied]
+    MemConfirm --> ReleaseMutexSuccess[Release std::mutex ScopedResourceLock]
+    ReleaseMutexSuccess --> Success([Return: Allocation Succeeded])
+
+    AbortTx --> MemRollback[ResourceManager: rollbackAllocationUnlocked<br/>Revert In-Memory Status to Available]
+    MemRollback --> ReleaseMutexFail[Release std::mutex ScopedResourceLock]
+    ReleaseMutexFail --> Fail([Return: Allocation Failed])
