@@ -214,6 +214,23 @@ QWidget* SchedulingView::createLiveTab()
     connect(m_scheduleAllocateButton, &QPushButton::clicked, this, &SchedulingView::onScheduleAndAllocateClicked);
     toolbarLayout->addWidget(m_scheduleAllocateButton);
 
+    m_autoDispatchToggleBtn = new QPushButton(QStringLiteral("⚡ Auto-Pipeline: ACTIVE"), tab);
+    m_autoDispatchToggleBtn->setStyleSheet(R"(
+        QPushButton {
+            background-color: #0d9488;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-weight: 700;
+            font-size: 13px;
+        }
+        QPushButton:hover { background-color: #0f766e; }
+        QPushButton:disabled { background-color: #94a3b8; color: #f1f5f9; }
+    )");
+    connect(m_autoDispatchToggleBtn, &QPushButton::clicked, this, &SchedulingView::onAutoDispatchToggled);
+    toolbarLayout->addWidget(m_autoDispatchToggleBtn);
+
     toolbarLayout->addStretch();
 
     m_refreshButton = new QPushButton(QStringLiteral("🔄 Refresh"), tab);
@@ -714,6 +731,9 @@ void SchedulingView::updatePermissions()
                            m_service->currentSession().isAdmin();
         m_scheduleAllocateButton->setEnabled(canManage && canAllocate);
     }
+    if (m_autoDispatchToggleBtn) {
+        m_autoDispatchToggleBtn->setEnabled(canManage);
+    }
 
     // Starvation Tab controls
     m_btnRunWithoutAging->setEnabled(canManage);
@@ -776,46 +796,53 @@ void SchedulingView::updateStatusBanner()
         )");
     }
 
-    bool isRunning = (m_service->scheduler() && m_service->scheduler()->hasRunningProcess());
+    QList<ApplicationService::ActiveExecution> activeList = m_service->getActiveExecutions();
+    QDateTime now = QDateTime::currentDateTime();
     bool canManage = m_service->currentSession().hasPermission(QStringLiteral("action:ManageScheduling")) ||
                      m_service->currentSession().isAdmin();
+    bool canAllocate = m_service->currentSession().hasPermission(QStringLiteral("action:RunwayAllocation")) ||
+                       m_service->currentSession().isAdmin();
 
-    if (isRunning) {
-        Models::Process runningProc = m_service->scheduler()->runningProcess();
-        QString runwayInfo;
-        Models::RunwayAssignment activeAssign;
-        if (m_service->getActiveAssignmentForFlight(runningProc.flightId, activeAssign)) {
-            Models::Runway rw;
-            if (m_service->getRunwayById(activeAssign.runwayId, rw)) {
-                runwayInfo = QStringLiteral(" on Runway %1").arg(rw.runwayNumber);
+    if (!activeList.isEmpty()) {
+        QStringList runwaySegments;
+        for (auto &exec : activeList) {
+            if (m_flightRunwayStart.contains(exec.flightId)) {
+                int localElapsed = m_flightRunwayStart.value(exec.flightId).secsTo(now);
+                if (localElapsed >= 0) {
+                    exec.remainingSec = qMax(0, exec.burstDurationSec - localElapsed);
+                }
             }
+            QString emergencyTag = exec.isEmergency ? QStringLiteral(" [EMERGENCY]") : QString();
+            runwaySegments.append(QStringLiteral("• Runway %1 (%2): Flight %3 (%4, Priority %5%6) — ⏱ %7s remaining")
+                                      .arg(exec.runwayNumber)
+                                      .arg(exec.runwayType)
+                                      .arg(exec.flightNumber.isEmpty() ? QString::number(exec.flightId) : exec.flightNumber)
+                                      .arg(exec.airline.isEmpty() ? exec.flightType : QStringLiteral("%1 %2").arg(exec.airline, exec.flightType))
+                                      .arg(exec.priority)
+                                      .arg(emergencyTag)
+                                      .arg(exec.remainingSec));
         }
 
-        m_runningBanner->setText(QStringLiteral("CPU / Runway Dispatcher: RUNNING (Flight %1 [%2], Priority %3%4)")
-                                     .arg(runningProc.flightNumber.isEmpty() ? QString::number(runningProc.flightId) : runningProc.flightNumber)
-                                     .arg(runningProc.airline.isEmpty() ? QStringLiteral("Airline") : runningProc.airline)
-                                     .arg(runningProc.effectivePriority)
-                                     .arg(runwayInfo));
+        m_runningBanner->setText(QStringLiteral("🛫 Active Runway Executions (%1 Parallel):\n%2")
+                                     .arg(activeList.size())
+                                     .arg(runwaySegments.join(QStringLiteral("\n"))));
         m_runningBanner->setStyleSheet(R"(
             QLabel {
-                background-color: #dbeafe;
-                border: 1px solid #93c5fd;
+                background-color: #eff6ff;
+                border: 2px solid #3b82f6;
                 border-radius: 8px;
-                padding: 8px 12px;
+                padding: 10px 14px;
                 font-size: 13px;
                 font-weight: 600;
-                color: #1e40af;
+                color: #1e3a8a;
             }
         )");
         if (m_completeProcessButton) {
             m_completeProcessButton->setVisible(true);
             m_completeProcessButton->setEnabled(canManage);
         }
-        if (m_scheduleAllocateButton) {
-            m_scheduleAllocateButton->setEnabled(false);
-        }
     } else {
-        m_runningBanner->setText(QStringLiteral("CPU / Runway Dispatcher: IDLE (No process running)"));
+        m_runningBanner->setText(QStringLiteral("CPU / Runway Dispatcher: IDLE (All runways available for incoming queue)"));
         m_runningBanner->setStyleSheet(R"(
             QLabel {
                 background-color: #f8fafc;
@@ -830,10 +857,11 @@ void SchedulingView::updateStatusBanner()
         if (m_completeProcessButton) {
             m_completeProcessButton->setVisible(false);
         }
-        if (m_scheduleAllocateButton) {
-            m_scheduleAllocateButton->setEnabled(canManage);
-        }
         m_runningStartedAt = QDateTime();
+    }
+
+    if (m_scheduleAllocateButton) {
+        m_scheduleAllocateButton->setEnabled(canManage && canAllocate);
     }
 }
 
@@ -973,51 +1001,95 @@ void SchedulingView::onClockTick()
         }
     }
 
-    // 2. Live Burst Execution countdown & Automatic Completion
-    if (m_service && m_service->scheduler() && m_service->scheduler()->hasRunningProcess()) {
-        Models::Process runningProc = m_service->scheduler()->runningProcess();
-        if (!m_runningStartedAt.isValid()) {
-            m_runningStartedAt = now;
+    if (!m_service) return;
+
+    // 2. Query all active parallel runway executions
+    QList<ApplicationService::ActiveExecution> activeList = m_service->getActiveExecutions();
+    bool completedAny = false;
+
+    // Prune stale flights from local start map
+    QSet<int> activeIds;
+    for (const auto &ex : activeList) {
+        activeIds.insert(ex.flightId);
+    }
+    for (auto it = m_flightRunwayStart.begin(); it != m_flightRunwayStart.end(); ) {
+        if (!activeIds.contains(it.key())) {
+            it = m_flightRunwayStart.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto &exec : activeList) {
+        if (!m_flightRunwayStart.contains(exec.flightId)) {
+            int elapsedFromDb = qBound(0, exec.burstDurationSec - exec.remainingSec, exec.burstDurationSec);
+            m_flightRunwayStart.insert(exec.flightId, now.addSecs(-elapsedFromDb));
         }
 
-        qint64 elapsedSec = m_runningStartedAt.secsTo(now);
-        int totalBurst = (runningProc.serviceTime > 0) ? runningProc.serviceTime : 60;
-        int remainingSec = std::max<int>(0, totalBurst - static_cast<int>(elapsedSec));
+        int localElapsed = m_flightRunwayStart.value(exec.flightId).secsTo(now);
+        if (localElapsed < 0) localElapsed = 0;
+        exec.remainingSec = qMax(0, exec.burstDurationSec - localElapsed);
 
-        QString runwayInfo;
-        Models::RunwayAssignment activeAssign;
-        if (m_service->getActiveAssignmentForFlight(runningProc.flightId, activeAssign)) {
-            Models::Runway rw;
-            if (m_service->getRunwayById(activeAssign.runwayId, rw)) {
-                runwayInfo = QStringLiteral(" on Runway %1").arg(rw.runwayNumber);
+        if (exec.remainingSec <= 0) {
+            QString compErr;
+            if (m_service->completeRunningProcessForFlight(exec.flightId, QDateTime(), nullptr, &compErr)) {
+                completedAny = true;
+                m_flightRunwayStart.remove(exec.flightId);
             }
         }
+    }
 
-        if (m_runningBanner) {
-            m_runningBanner->setText(QStringLiteral("CPU / Runway Dispatcher: RUNNING (Flight %1 [%2], Priority %3%4) — ⏱ Burst Execution: %5s remaining")
-                                         .arg(runningProc.flightNumber.isEmpty() ? QString::number(runningProc.flightId) : runningProc.flightNumber)
-                                         .arg(runningProc.airline.isEmpty() ? QStringLiteral("Airline") : runningProc.airline)
-                                         .arg(runningProc.effectivePriority)
-                                         .arg(runwayInfo)
-                                         .arg(remainingSec));
-        }
-
-        if (m_completeProcessButton) {
-            m_completeProcessButton->setVisible(true);
-            m_completeProcessButton->setEnabled(true);
-        }
-
-        // When burst time reaches 0, automatically complete process and free the CPU
-        if (remainingSec <= 0) {
-            QString compErr;
-            m_service->completeRunningProcess(QDateTime(), nullptr, &compErr);
-            m_runningStartedAt = QDateTime();
+    if (completedAny) {
+        refreshView();
+    } else if (m_service->isAutoDispatchEnabled()) {
+        int autoAllocCount = 0;
+        if (m_service->allocateAllAvailableRunways(&autoAllocCount) && autoAllocCount > 0) {
             refreshView();
+        } else {
+            updateStatusBanner();
         }
     } else {
-        if (m_completeProcessButton) {
-            m_completeProcessButton->setVisible(false);
-        }
+        updateStatusBanner();
+    }
+}
+
+void SchedulingView::onAutoDispatchToggled()
+{
+    if (!m_service) return;
+    bool newState = !m_service->isAutoDispatchEnabled();
+    m_service->setAutoDispatchEnabled(newState);
+
+    if (newState) {
+        m_autoDispatchToggleBtn->setText(QStringLiteral("⚡ Auto-Pipeline: ACTIVE"));
+        m_autoDispatchToggleBtn->setStyleSheet(R"(
+            QPushButton {
+                background-color: #0d9488;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 700;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #0f766e; }
+        )");
+        int allocated = 0;
+        m_service->allocateAllAvailableRunways(&allocated);
+        refreshView();
+    } else {
+        m_autoDispatchToggleBtn->setText(QStringLiteral("⏸ Auto-Pipeline: PAUSED"));
+        m_autoDispatchToggleBtn->setStyleSheet(R"(
+            QPushButton {
+                background-color: #64748b;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 700;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #475569; }
+        )");
     }
 }
 
@@ -1076,36 +1148,46 @@ void SchedulingView::onDispatchClicked()
 void SchedulingView::onScheduleAndAllocateClicked()
 {
     if (!m_service) return;
+    int allocatedCount = 0;
     QString err;
-    ApplicationService::ScheduleAndAllocateResult res = m_service->scheduleAndAllocateNext(&err);
-    if (res.success) {
-        m_runningStartedAt = QDateTime::currentDateTime();
+    bool ok = m_service->allocateAllAvailableRunways(&allocatedCount, &err);
+    if (ok && allocatedCount > 0) {
+        refreshView();
         QMessageBox::information(
             this,
             QStringLiteral("Schedule & Runway Allocation"),
-            res.message
+            QStringLiteral("Successfully allocated %1 runway(s) in parallel to eligible waiting flights.")
+                .arg(allocatedCount)
         );
     } else {
+        refreshView();
         QMessageBox::warning(
             this,
             QStringLiteral("Schedule & Allocation Result"),
-            res.message.isEmpty() ? err : res.message
+            err.isEmpty() ? QStringLiteral("No compatible available runways could be paired with waiting flights.") : err
         );
     }
-    refreshView();
 }
 
 void SchedulingView::onCompleteProcessClicked()
 {
     if (!m_service) return;
+    QList<ApplicationService::ActiveExecution> activeList = m_service->getActiveExecutions();
+    if (activeList.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Complete Process"),
+                                 QStringLiteral("No active runway processes to complete."));
+        return;
+    }
+
+    int targetFid = activeList.first().flightId;
     QString err;
-    if (!m_service->completeRunningProcess(QDateTime(), nullptr, &err)) {
+    if (!m_service->completeRunningProcessForFlight(targetFid, QDateTime(), nullptr, &err)) {
         QMessageBox::warning(this, QStringLiteral("Completion Failed"), err);
     } else {
-        m_runningStartedAt = QDateTime();
+        m_flightRunwayStart.remove(targetFid);
         refreshView();
         QMessageBox::information(this, QStringLiteral("Process Completed"),
-                                 QStringLiteral("Process completed successfully. CPU / Runway Dispatcher is now IDLE."));
+                                 QStringLiteral("Runway burst completed successfully and resource released."));
     }
 }
 

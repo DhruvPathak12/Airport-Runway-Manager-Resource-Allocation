@@ -1228,9 +1228,9 @@ bool ApplicationService::releaseRunwayResource(int runwayId,
 
   // Complete associated flight process in scheduler and database if active
   if (assignedFlightId > 0) {
-    if (m_scheduler && m_scheduler->hasRunningProcess() &&
-        m_scheduler->runningProcess().flightId == assignedFlightId) {
-      m_scheduler->completeRunningProcess(QDateTime::currentDateTime());
+    if (m_scheduler && (m_scheduler->hasRunningFlight(assignedFlightId) ||
+        (m_scheduler->hasRunningProcess() && m_scheduler->runningProcess().flightId == assignedFlightId))) {
+      m_scheduler->completeRunningProcess(assignedFlightId, QDateTime::currentDateTime());
     }
     QSqlQuery compQ(db);
     compQ.prepare(QStringLiteral(
@@ -1262,6 +1262,10 @@ bool ApplicationService::releaseRunwayResource(int runwayId,
   emit runwaysChanged();
   emit flightsChanged();
   emit processesChanged();
+
+  if (m_autoDispatchEnabled) {
+    allocateAllAvailableRunways();
+  }
 
   return true;
 }
@@ -4667,21 +4671,19 @@ bool ApplicationService::dispatchNextProcess(Models::Process *outDispatched,
   return true;
 }
 
-bool ApplicationService::completeRunningProcess(const QDateTime &completedAt,
-                                                Models::Process *outCompleted,
-                                                QString *outError) {
+bool ApplicationService::dispatchProcess(int flightId,
+                                         Models::Process *outDispatched,
+                                         QString *outError) {
   // 1. RBAC check
   if (!isAuthenticated()) {
     if (outError)
-      *outError = QStringLiteral("Authentication required: unauthenticated "
-                                 "users cannot complete processes.");
+      *outError = QStringLiteral("Authentication required: unauthenticated users cannot dispatch processes.");
     return false;
   }
 
   if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
     if (outError) {
-      *outError = QStringLiteral("Access denied: role '%1' is not authorized "
-                                 "to complete scheduling processes.")
+      *outError = QStringLiteral("Access denied: role '%1' is not authorized to dispatch scheduling processes.")
                       .arg(m_session.role());
     }
     return false;
@@ -4693,14 +4695,136 @@ bool ApplicationService::completeRunningProcess(const QDateTime &completedAt,
     return false;
   }
 
-  if (!m_scheduler->hasRunningProcess()) {
-    if (outError)
-      *outError =
-          QStringLiteral("No process is currently RUNNING to complete.");
+  if (m_scheduler->hasRunningFlight(flightId)) {
+    if (outError) {
+      *outError = QStringLiteral("Process for flight %1 is already RUNNING.").arg(flightId);
+    }
     return false;
   }
 
-  Models::Process running = m_scheduler->runningProcess();
+  // 2. Locate process candidate
+  Models::Process candidate;
+  bool found = false;
+  if (m_scheduler) {
+    found = m_scheduler->readyQueue().findByFlightId(flightId, &candidate);
+  }
+  if (!found) {
+    if (!getProcessByFlightId(flightId, candidate, outError)) {
+      if (outError && outError->isEmpty()) {
+        *outError = QStringLiteral("Flight %1 not found in scheduling queue.").arg(flightId);
+      }
+      return false;
+    }
+  }
+
+  // 3. Validate state transition to Running
+  QString transReason;
+  if (!candidate.canTransitionTo(Models::ProcessState::Running, &transReason)) {
+    if (outError)
+      *outError = QStringLiteral("Cannot dispatch flight %1: %2").arg(candidate.flightId).arg(transReason);
+    return false;
+  }
+
+  // 4. Update MySQL scheduling_queue if DB is connected
+  if (DatabaseManager::instance().isConnected()) {
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (db.isOpen() && hasProcessForFlight(candidate.flightId)) {
+      QSqlQuery q(db);
+      q.prepare(QStringLiteral(
+          "UPDATE scheduling_queue "
+          "SET process_state = 'Running' "
+          "WHERE flight_id = :fid AND process_state = 'Ready';"));
+      q.bindValue(QStringLiteral(":fid"), candidate.flightId);
+
+      if (!q.exec()) {
+        qWarning() << "[ApplicationService] dispatchProcess DB update failed:" << q.lastError().text();
+        if (outError) {
+          *outError = QStringLiteral("Database update failed during dispatch: %1").arg(q.lastError().text());
+        }
+        return false;
+      }
+    }
+  }
+
+  // 5. Dispatch in Scheduler
+  Scheduler::DispatchResult res = m_scheduler->dispatchProcess(flightId);
+  if (!res.success) {
+    if (outError)
+      *outError = res.reason;
+    return false;
+  }
+
+  if (outDispatched) {
+    *outDispatched = res.process;
+  }
+
+  emit processesChanged();
+  return true;
+}
+
+bool ApplicationService::completeRunningProcessForFlight(int flightId,
+                                                        const QDateTime &completedAt,
+                                                        Models::Process *outCompleted,
+                                                        QString *outError) {
+  // 1. RBAC check
+  if (!isAuthenticated()) {
+    if (outError)
+      *outError = QStringLiteral("Authentication required: unauthenticated users cannot complete processes.");
+    return false;
+  }
+
+  if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+    if (outError) {
+      *outError = QStringLiteral("Access denied: role '%1' is not authorized to complete scheduling processes.")
+                      .arg(m_session.role());
+    }
+    return false;
+  }
+
+  if (!m_scheduler) {
+    if (outError)
+      *outError = QStringLiteral("Scheduler service is not initialized.");
+    return false;
+  }
+
+  Models::Process running;
+  bool found = false;
+  if (m_scheduler && m_scheduler->hasRunningFlight(flightId)) {
+    for (const auto &p : m_scheduler->runningProcesses()) {
+      if (p.flightId == flightId) {
+        running = p;
+        found = true;
+        break;
+      }
+    }
+  } else if (m_scheduler && m_scheduler->hasRunningProcess() && m_scheduler->runningProcess().flightId == flightId) {
+    running = m_scheduler->runningProcess();
+    found = true;
+  } else if (DatabaseManager::instance().isConnected()) {
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (db.isOpen()) {
+      QSqlQuery q(db);
+      q.prepare(QStringLiteral("SELECT queue_id, flight_id, arrival_time, effective_priority, service_time "
+                               "FROM scheduling_queue WHERE flight_id = :fid AND process_state = 'Running';"));
+      q.bindValue(QStringLiteral(":fid"), flightId);
+      if (q.exec() && q.next()) {
+        running.queueId = q.value(0).toInt();
+        running.flightId = q.value(1).toInt();
+        running.arrivalTime = q.value(2).toDateTime();
+        running.effectivePriority = q.value(3).toInt();
+        running.serviceTime = q.value(4).toInt();
+        running.state = Models::ProcessState::Running;
+        found = true;
+      }
+    }
+  }
+
+  if (!found) {
+    if (outError) {
+      *outError = QStringLiteral("Process for flight %1 is not currently in RUNNING state.").arg(flightId);
+    }
+    return false;
+  }
 
   // Determine completion timestamp and compute metrics
   QDateTime compTime = completedAt.isValid()
@@ -4719,7 +4843,7 @@ bool ApplicationService::completeRunningProcess(const QDateTime &completedAt,
   // 2. Database update if DB is connected
   if (DatabaseManager::instance().isConnected()) {
     QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
-    if (db.isOpen() && hasProcessForFlight(running.flightId)) {
+    if (db.isOpen() && hasProcessForFlight(flightId)) {
       QSqlQuery q(db);
       q.prepare(QStringLiteral(
           "UPDATE scheduling_queue "
@@ -4731,53 +4855,95 @@ bool ApplicationService::completeRunningProcess(const QDateTime &completedAt,
       q.bindValue(QStringLiteral(":wt"), running.waitingTime);
       q.bindValue(QStringLiteral(":tat"), running.turnaroundTime);
       q.bindValue(QStringLiteral(":ct"), running.completionTime);
-      q.bindValue(QStringLiteral(":fid"), running.flightId);
+      q.bindValue(QStringLiteral(":fid"), flightId);
 
       if (!q.exec()) {
         qWarning()
-            << "[ApplicationService] completeRunningProcess DB update failed:"
+            << "[ApplicationService] completeRunningProcessForFlight DB update failed:"
             << q.lastError().text();
         if (outError) {
-          *outError =
-              QStringLiteral(
-                  "Database update failed during process completion: %1")
-                  .arg(q.lastError().text());
+          *outError = QStringLiteral("Database update failed during process completion: %1")
+                          .arg(q.lastError().text());
         }
         return false;
-      }
-
-      if (q.numRowsAffected() == 0) {
-        qDebug() << "[ApplicationService] completeRunningProcess: row for flight"
-                 << running.flightId << "was already completed or not in 'Running' state.";
       }
     }
   }
 
-  // 3. Complete in Scheduler (computes metrics, records in
-  // m_completedProcesses, clears running)
-  Scheduler::CompletionResult res =
-      m_scheduler->completeRunningProcess(compTime);
+  // 3. Complete in Scheduler
+  Scheduler::CompletionResult res = m_scheduler->completeRunningProcess(flightId, compTime);
   if (!res.success) {
-    if (outError)
-      *outError = res.reason;
-    return false;
+    m_scheduler->clearRunningProcess(flightId);
   }
 
   if (outCompleted) {
-    *outCompleted = res.process;
+    *outCompleted = res.success ? res.process : running;
   }
 
   // 4. If this flight holds an active runway assignment, release it automatically!
   Models::RunwayAssignment activeAssign;
-  if (getActiveAssignmentForFlight(running.flightId, activeAssign)) {
+  if (getActiveAssignmentForFlight(flightId, activeAssign)) {
     QString relErr;
     releaseRunwayResource(activeAssign.runwayId, &relErr);
+  }
+
+  // 5. Automatically allocate next available runway if pipeline auto-dispatch is enabled
+  if (m_autoDispatchEnabled) {
+    allocateAllAvailableRunways();
   }
 
   emit processesChanged();
   emit runwaysChanged();
   emit flightsChanged();
   return true;
+}
+
+bool ApplicationService::completeRunningProcess(const QDateTime &completedAt,
+                                                Models::Process *outCompleted,
+                                                QString *outError) {
+  // 1. RBAC check
+  if (!isAuthenticated()) {
+    if (outError)
+      *outError = QStringLiteral("Authentication required: unauthenticated users cannot complete processes.");
+    return false;
+  }
+
+  if (!m_session.hasPermission(QStringLiteral("action:ManageScheduling"))) {
+    if (outError) {
+      *outError = QStringLiteral("Access denied: role '%1' is not authorized to complete scheduling processes.")
+                      .arg(m_session.role());
+    }
+    return false;
+  }
+
+  if (!m_scheduler) {
+    if (outError)
+      *outError = QStringLiteral("Scheduler service is not initialized.");
+    return false;
+  }
+
+  int targetFid = 0;
+  if (m_scheduler && !m_scheduler->runningProcesses().isEmpty()) {
+    targetFid = m_scheduler->runningProcesses().first().flightId;
+  } else if (m_scheduler && m_scheduler->hasRunningProcess()) {
+    targetFid = m_scheduler->runningProcess().flightId;
+  } else if (DatabaseManager::instance().isConnected()) {
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (db.isOpen()) {
+      QSqlQuery q(db);
+      if (q.exec(QStringLiteral("SELECT flight_id FROM scheduling_queue WHERE process_state = 'Running' ORDER BY queue_id ASC LIMIT 1;")) && q.next()) {
+        targetFid = q.value(0).toInt();
+      }
+    }
+  }
+
+  if (targetFid <= 0) {
+    if (outError)
+      *outError = QStringLiteral("No process is currently RUNNING to complete.");
+    return false;
+  }
+
+  return completeRunningProcessForFlight(targetFid, completedAt, outCompleted, outError);
 }
 
 Scheduler::PerformanceMetrics
@@ -5306,67 +5472,85 @@ ApplicationService::ScheduleAndAllocateResult ApplicationService::scheduleAndAll
     return result;
   }
 
-  if (m_scheduler->hasRunningProcess()) {
-    Models::Process running = m_scheduler->runningProcess();
-    result.success = false;
-    result.message = QStringLiteral("Dispatcher in progress: Flight %1 is currently executing. Wait for burst execution to finish or click 'Complete Burst'.")
-                         .arg(running.flightNumber.isEmpty() ? QString::number(running.flightId) : running.flightNumber);
+  // 1. Inspect Ready Queue in priority order to find highest priority candidate with compatible available runway
+  QList<Models::Process> candidates;
+  if (m_scheduler) {
+    candidates = m_scheduler->readyQueueProcesses();
+  }
+
+  if (candidates.isEmpty()) {
+    result.message = QStringLiteral("No eligible READY processes waiting in queue.");
     if (outError) *outError = result.message;
     return result;
   }
 
-  // 1. Select highest-priority eligible candidate from ReadyQueue
-  Models::Process candidate;
-  QString selectReason;
-  if (!m_scheduler->selectNextProcess(&candidate, &selectReason)) {
-    result.message = selectReason.isEmpty() ? QStringLiteral("No eligible READY processes waiting in queue.") : selectReason;
-    if (outError) *outError = result.message;
-    return result;
-  }
-  result.candidateProcess = candidate;
+  // Ensure candidates are evaluated in priority order (Emergency / highest priority first)
+  std::sort(candidates.begin(), candidates.end(), [](const Models::Process &a, const Models::Process &b) {
+    if (a.effectivePriority != b.effectivePriority) {
+      return a.effectivePriority < b.effectivePriority;
+    }
+    if (a.arrivalTime.isValid() && b.arrivalTime.isValid() && a.arrivalTime != b.arrivalTime) {
+      return a.arrivalTime < b.arrivalTime;
+    }
+    return a.flightId < b.flightId;
+  });
 
-  // 2. Fetch and validate flight
-  Models::Flight flight;
-  QString fetchErr;
-  if (!getFlightById(candidate.flightId, flight, &fetchErr)) {
-    result.message = QStringLiteral("Failed to fetch flight %1: %2").arg(candidate.flightId).arg(fetchErr);
-    if (outError) *outError = result.message;
-    return result;
+  Models::Process chosenCandidate;
+  Models::Flight chosenFlight;
+  Models::Runway chosenRunway;
+  int chosenRwId = 0;
+  bool foundCandidate = false;
+
+  for (const Models::Process &cand : candidates) {
+    if (cand.state != Models::ProcessState::Ready) {
+      continue;
+    }
+    if (m_scheduler->hasRunningFlight(cand.flightId)) {
+      continue;
+    }
+
+    Models::Flight flt;
+    QString fErr;
+    if (!getFlightById(cand.flightId, flt, &fErr)) {
+      continue;
+    }
+
+    // Check if flight already possesses an active assignment
+    Models::RunwayAssignment existingAssign;
+    if (getActiveAssignmentForFlight(flt.id, existingAssign)) {
+      continue;
+    }
+
+    // Check if a compatible available runway exists for this flight
+    QString findErr;
+    int rwId = findCompatibleAvailableRunway(flt.id, &findErr);
+    if (rwId > 0) {
+      Models::Runway rw;
+      if (getRunwayById(rwId, rw)) {
+        chosenCandidate = cand;
+        chosenFlight = flt;
+        chosenRunway = rw;
+        chosenRwId = rwId;
+        foundCandidate = true;
+        break;
+      }
+    }
   }
 
-  // Check if flight already possesses an active assignment
-  Models::RunwayAssignment existingAssign;
-  if (getActiveAssignmentForFlight(flight.id, existingAssign)) {
-    result.message = QStringLiteral("Flight %1 already possesses active runway assignment #%2.")
-                         .arg(flight.flightNumber)
-                         .arg(existingAssign.assignmentId);
-    result.allocationResult = Models::AllocationResult::ConflictExistingAssignment;
-    if (outError) *outError = result.message;
-    return result;
-  }
-
-  // 3. Find compatible available runway
-  QString findErr;
-  int rwId = findCompatibleAvailableRunway(flight.id, &findErr);
-  if (rwId <= 0) {
-    // RESOURCE UNAVAILABLE: Do NOT dispatch candidate. Preserve READY state.
+  if (!foundCandidate) {
     result.success = false;
     result.allocationResult = Models::AllocationResult::RunwayUnavailable;
-    result.message = QStringLiteral("No compatible available runway for flight %1 (%2 - %3). Process remains READY in queue.")
-                         .arg(flight.flightNumber.isEmpty() ? QString::number(flight.id) : flight.flightNumber)
-                         .arg(flight.airline)
-                         .arg(flight.flightType);
+    result.message = QStringLiteral("No compatible available runway for waiting flights. Processes remain READY in queue.");
     if (outError) *outError = result.message;
     return result;
   }
 
-  Models::Runway targetRunway;
-  getRunwayById(rwId, targetRunway);
+  result.candidateProcess = chosenCandidate;
 
-  // 4. Dispatch the candidate process (READY -> RUNNING)
+  // 2. Dispatch the candidate process (READY -> RUNNING)
   Models::Process dispatched;
   QString dispErr;
-  if (!dispatchNextProcess(&dispatched, &dispErr)) {
+  if (!dispatchProcess(chosenCandidate.flightId, &dispatched, &dispErr)) {
     result.success = false;
     result.message = QStringLiteral("Scheduler dispatch rejected: %1").arg(dispErr);
     if (outError) *outError = result.message;
@@ -5374,12 +5558,17 @@ ApplicationService::ScheduleAndAllocateResult ApplicationService::scheduleAndAll
   }
   result.dispatchedProcess = dispatched;
 
-  // 5. Execute atomic MySQL runway allocation transaction
+  // 3. Execute atomic MySQL runway allocation transaction
   QString allocErr;
-  Models::AllocationResult allocRes = allocateRunway(rwId, flight.id, &allocErr);
+  Models::AllocationResult allocRes = allocateRunway(chosenRwId, chosenFlight.id, &allocErr);
   result.allocationResult = allocRes;
 
   if (allocRes != Models::AllocationResult::Success) {
+    m_scheduler->clearRunningProcess(chosenCandidate.flightId);
+    if (m_scheduler) {
+      chosenCandidate.state = Models::ProcessState::Ready;
+      m_scheduler->readyQueue().enqueue(chosenCandidate);
+    }
     result.success = false;
     result.message = QStringLiteral("Runway allocation transaction failed: %1").arg(allocErr);
     if (outError) *outError = result.message;
@@ -5387,12 +5576,127 @@ ApplicationService::ScheduleAndAllocateResult ApplicationService::scheduleAndAll
   }
 
   result.success = true;
-  result.allocatedRunway = targetRunway;
+  result.allocatedRunway = chosenRunway;
   result.message = QStringLiteral("Successfully scheduled and allocated runway %1 to flight %2 (Priority: %3, Assignment committed).")
-                       .arg(targetRunway.runwayNumber)
-                       .arg(flight.flightNumber)
+                       .arg(chosenRunway.runwayNumber)
+                       .arg(chosenFlight.flightNumber)
                        .arg(dispatched.effectivePriority);
   return result;
+}
+
+bool ApplicationService::allocateAllAvailableRunways(int *outAllocatedCount, QString *outError) {
+  int count = 0;
+  QString lastMsg;
+
+  while (true) {
+    QString err;
+    ScheduleAndAllocateResult res = scheduleAndAllocateNext(&err);
+    if (!res.success) {
+      lastMsg = res.message;
+      break;
+    }
+    count++;
+  }
+
+  if (outAllocatedCount) {
+    *outAllocatedCount = count;
+  }
+
+  if (count > 0) {
+    return true;
+  }
+
+  if (outError && !lastMsg.isEmpty()) {
+    *outError = lastMsg;
+  }
+  return false;
+}
+
+QList<ApplicationService::ActiveExecution> ApplicationService::getActiveExecutions(QString *outError) const {
+  QList<ActiveExecution> list;
+
+  if (DatabaseManager::instance().isConnected()) {
+    QSqlDatabase db = QSqlDatabase::database(DatabaseManager::CONNECTION_NAME);
+    if (db.isOpen()) {
+      QSqlQuery q(db);
+      QString sql = QStringLiteral(
+          "SELECT ra.runway_id, r.runway_number, r.runway_type, "
+          "       f.flight_id, f.flight_number, f.airline, f.flight_type, "
+          "       COALESCE(sq.effective_priority, f.priority) AS priority, "
+          "       f.is_emergency, "
+          "       ra.assigned_at, "
+          "       COALESCE(sq.service_time, 60) AS service_time, "
+          "       TIMESTAMPDIFF(SECOND, ra.assigned_at, NOW()) AS elapsed_seconds "
+          "FROM runway_assignments ra "
+          "JOIN runways r ON ra.runway_id = r.runway_id "
+          "JOIN flights f ON ra.flight_id = f.flight_id "
+          "LEFT JOIN scheduling_queue sq ON f.flight_id = sq.flight_id "
+          "WHERE ra.status = 'Active' AND r.status = 'Occupied' "
+          "ORDER BY ra.assigned_at ASC;");
+
+      if (q.exec(sql)) {
+        while (q.next()) {
+          ActiveExecution exec;
+          exec.runwayId = q.value(0).toInt();
+          exec.runwayNumber = q.value(1).toString();
+          exec.runwayType = q.value(2).toString();
+          exec.flightId = q.value(3).toInt();
+          exec.flightNumber = q.value(4).toString();
+          exec.airline = q.value(5).toString();
+          exec.flightType = q.value(6).toString();
+          exec.priority = q.value(7).toInt();
+          exec.isEmergency = q.value(8).toBool();
+          QDateTime assigned = q.value(9).toDateTime();
+          assigned.setTimeSpec(Qt::LocalTime);
+          exec.assignedAt = assigned;
+          exec.burstDurationSec = q.value(10).toInt();
+          if (exec.burstDurationSec <= 0) exec.burstDurationSec = 60;
+
+          int elapsedSec = q.value(11).toInt();
+          if (elapsedSec < 0) {
+            elapsedSec = 0;
+          }
+          exec.remainingSec = qMax(0, exec.burstDurationSec - elapsedSec);
+
+          list.append(exec);
+        }
+        return list;
+      } else {
+        if (outError) *outError = q.lastError().text();
+      }
+    }
+  }
+
+  // Fallback for in-memory or unit test environments
+  if (m_scheduler) {
+    QDateTime now = QDateTime::currentDateTime();
+    QList<Models::Process> runningList = m_scheduler->runningProcesses();
+    for (const Models::Process &p : runningList) {
+      ActiveExecution exec;
+      exec.flightId = p.flightId;
+      exec.flightNumber = p.flightNumber;
+      exec.airline = p.airline;
+      exec.priority = p.effectivePriority;
+      exec.burstDurationSec = (p.serviceTime > 0) ? p.serviceTime : 60;
+      exec.assignedAt = p.arrivalTime;
+      int elapsedSec = exec.assignedAt.isValid() ? exec.assignedAt.secsTo(now) : 0;
+      exec.remainingSec = qMax(0, exec.burstDurationSec - elapsedSec);
+      if (m_resourceManager) {
+        int rwId = m_resourceManager->activeRunwayForFlight(p.flightId);
+        if (rwId > 0) {
+          Models::Runway rw;
+          if (const_cast<ApplicationService*>(this)->getRunwayById(rwId, rw)) {
+            exec.runwayId = rw.id;
+            exec.runwayNumber = rw.runwayNumber;
+            exec.runwayType = rw.runwayType;
+          }
+        }
+      }
+      list.append(exec);
+    }
+  }
+
+  return list;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

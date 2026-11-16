@@ -138,6 +138,7 @@ Scheduler::DispatchResult Scheduler::dispatchNextProcess()
     // 6. Record as currently running process
     m_runningProcess = removed;
     m_hasRunningProcess = true;
+    m_runningProcesses[removed.flightId] = removed;
 
     res.success = true;
     res.process = removed;
@@ -148,6 +149,41 @@ Scheduler::DispatchResult Scheduler::dispatchNextProcess()
     emit processDispatched(m_runningProcess);
     emit schedulingComplete();
 
+    return res;
+}
+
+Scheduler::DispatchResult Scheduler::dispatchProcess(int flightId)
+{
+    DispatchResult res;
+    if (m_runningProcesses.contains(flightId)) {
+        res.success = false;
+        res.reason = QStringLiteral("Flight %1 is already running.").arg(flightId);
+        emit schedulerError(res.reason);
+        return res;
+    }
+
+    Models::Process removed;
+    QString removeErr;
+    if (!m_readyQueue.removeByFlightId(flightId, &removed, &removeErr)) {
+        res.success = false;
+        res.reason = QStringLiteral("Failed to remove flight %1 from ready queue: %2")
+                         .arg(flightId).arg(removeErr);
+        emit schedulerError(res.reason);
+        return res;
+    }
+
+    removed.transitionTo(Models::ProcessState::Running);
+    m_runningProcess = removed;
+    m_hasRunningProcess = true;
+    m_runningProcesses[flightId] = removed;
+
+    res.success = true;
+    res.process = removed;
+    res.reason = QStringLiteral("Successfully dispatched flight %1 (Priority %2) to RUNNING.")
+                     .arg(removed.flightId).arg(removed.effectivePriority);
+
+    emit processDispatched(removed);
+    emit schedulingComplete();
     return res;
 }
 
@@ -162,16 +198,60 @@ void Scheduler::setRunningProcess(const Models::Process &process)
 {
     m_runningProcess = process;
     m_hasRunningProcess = (process.state == Models::ProcessState::Running);
+    if (m_hasRunningProcess) {
+        m_runningProcesses[process.flightId] = process;
+    } else {
+        m_runningProcesses.remove(process.flightId);
+    }
 }
 
 void Scheduler::clearRunningProcess()
 {
+    m_runningProcesses.clear();
     m_runningProcess = Models::Process();
     m_hasRunningProcess = false;
 }
 
+void Scheduler::clearRunningProcess(int flightId)
+{
+    m_runningProcesses.remove(flightId);
+    if (m_runningProcess.flightId == flightId) {
+        if (!m_runningProcesses.isEmpty()) {
+            m_runningProcess = m_runningProcesses.first();
+            m_hasRunningProcess = true;
+        } else {
+            m_runningProcess = Models::Process();
+            m_hasRunningProcess = false;
+        }
+    }
+}
+
+Scheduler::CompletionResult Scheduler::completeRunningProcess(int flightId, const QDateTime &completedAt)
+{
+    CompletionResult res;
+    Models::Process procToComplete;
+    if (m_runningProcesses.contains(flightId)) {
+        procToComplete = m_runningProcesses.value(flightId);
+    } else if (m_hasRunningProcess && m_runningProcess.flightId == flightId) {
+        procToComplete = m_runningProcess;
+    } else {
+        res.success = false;
+        res.reason = QStringLiteral("Flight %1 is not currently in running state.").arg(flightId);
+        emit schedulerError(res.reason);
+        return res;
+    }
+
+    res = completeProcess(procToComplete, completedAt);
+    clearRunningProcess(flightId);
+    return res;
+}
+
 Scheduler::CompletionResult Scheduler::completeRunningProcess(const QDateTime &completedAt)
 {
+    if (!m_runningProcesses.isEmpty()) {
+        int firstFid = m_runningProcesses.firstKey();
+        return completeRunningProcess(firstFid, completedAt);
+    }
     CompletionResult res;
     if (!m_hasRunningProcess) {
         res.success = false;

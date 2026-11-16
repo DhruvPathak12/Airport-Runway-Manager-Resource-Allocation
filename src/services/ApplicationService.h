@@ -504,6 +504,20 @@ public:
                                 Models::Process *outCompleted = nullptr,
                                 QString *outError = nullptr);
 
+    bool completeRunningProcessForFlight(int flightId,
+                                        const QDateTime &completedAt = QDateTime(),
+                                        Models::Process *outCompleted = nullptr,
+                                        QString *outError = nullptr);
+
+    bool dispatchProcess(int flightId,
+                         Models::Process *outDispatched = nullptr,
+                         QString *outError = nullptr);
+
+    bool isAutoDispatchEnabled() const { return m_autoDispatchEnabled; }
+    void setAutoDispatchEnabled(bool enabled) { m_autoDispatchEnabled = enabled; }
+
+    bool allocateAllAvailableRunways(int *outAllocatedCount = nullptr, QString *outError = nullptr);
+
     /**
      * @brief Returns aggregate scheduling performance metrics across completed processes.
      */
@@ -627,6 +641,23 @@ public:
      * @return ScheduleAndAllocateResult describing scheduling decision and allocation outcome.
      */
     ScheduleAndAllocateResult scheduleAndAllocateNext(QString *outError = nullptr);
+
+    struct ActiveExecution {
+        int runwayId = 0;
+        QString runwayNumber;
+        QString runwayType;
+        int flightId = 0;
+        QString flightNumber;
+        QString airline;
+        QString flightType;
+        int priority = 3;
+        bool isEmergency = false;
+        QDateTime assignedAt;
+        int burstDurationSec = 60;
+        int remainingSec = 0;
+    };
+
+    QList<ActiveExecution> getActiveExecutions(QString *outError = nullptr) const;
 
     // ── Day 24: System Dashboard & Monitoring Structures ─────────────────────
     struct OperationLogEntry {
@@ -757,5 +788,6 @@ private:
     TransactionSummary     m_lastTx;
     AllocationFailureStage m_allocFailureStage   = AllocationFailureStage::None;
     ReleaseFailureStage    m_releaseFailureStage = ReleaseFailureStage::None;
+    bool                   m_autoDispatchEnabled = true;
 };
 

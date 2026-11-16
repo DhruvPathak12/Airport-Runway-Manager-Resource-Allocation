@@ -115,17 +115,34 @@ public:
     /**
      * @brief Checks if the scheduler currently has an active RUNNING process.
      */
-    bool hasRunningProcess() const { return m_hasRunningProcess; }
+    bool hasRunningProcess() const { return !m_runningProcesses.isEmpty() || m_hasRunningProcess; }
+    bool hasRunningFlight(int flightId) const {
+        return m_runningProcesses.contains(flightId) || (m_hasRunningProcess && m_runningProcess.flightId == flightId);
+    }
 
     /**
      * @brief Returns a copy of the currently running process, if any.
      */
-    Models::Process runningProcess() const { return m_runningProcess; }
+    Models::Process runningProcess() const {
+        if (!m_runningProcesses.isEmpty()) return m_runningProcesses.first();
+        return m_runningProcess;
+    }
+
+    QList<Models::Process> runningProcesses() const {
+        if (!m_runningProcesses.isEmpty()) return m_runningProcesses.values();
+        if (m_hasRunningProcess) return { m_runningProcess };
+        return {};
+    }
+
+    int runningProcessCount() const {
+        return m_runningProcesses.size() + (m_hasRunningProcess && !m_runningProcesses.contains(m_runningProcess.flightId) ? 1 : 0);
+    }
 
     /**
      * @brief Returns a pointer to the currently running process, or nullptr if none.
      */
     const Models::Process* runningProcessPtr() const {
+        if (!m_runningProcesses.isEmpty()) return &m_runningProcesses.first();
         return m_hasRunningProcess ? &m_runningProcess : nullptr;
     }
 
@@ -135,6 +152,12 @@ public:
      */
     void setRunningProcess(const Models::Process &process);
     void clearRunningProcess();
+    void clearRunningProcess(int flightId);
+
+    /**
+     * @brief Dispatches a specific candidate flight from ReadyQueue to RUNNING.
+     */
+    DispatchResult dispatchProcess(int flightId);
 
     /**
      * @brief Completes the currently RUNNING process at a given completion timestamp.
@@ -144,6 +167,7 @@ public:
      * @return CompletionResult containing success status, updated process, and explanatory reason.
      */
     CompletionResult completeRunningProcess(const QDateTime &completedAt = QDateTime());
+    CompletionResult completeRunningProcess(int flightId, const QDateTime &completedAt = QDateTime());
 
     /**
      * @brief Completes a specified process directly (for batch or simulation replay).
@@ -225,5 +249,6 @@ private:
     SchedulerComponents::AgingEngine  m_agingEngine;
     Models::Process                   m_runningProcess;
     bool                              m_hasRunningProcess = false;
+    QMap<int, Models::Process>        m_runningProcesses;
     QList<Models::Process>            m_completedProcesses;
 };
